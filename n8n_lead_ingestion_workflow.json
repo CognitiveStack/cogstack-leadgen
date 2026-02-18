@@ -1,0 +1,440 @@
+{
+  "name": "Lead Ingestion — OpenClaw to Notion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-ingestion",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Lead Ingestion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "lead-ingestion"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-batch-id",
+              "leftValue": "={{ $json.body.batch_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "check-leads-array",
+              "leftValue": "={{ $json.body.leads }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "validate-payload",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "={{ $env.BATCHES_DB_ID }}",
+        "title": "={{ $json.body.batch_id }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Run Date|date",
+              "dateValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "key": "Status|select",
+              "selectValue": "Running"
+            },
+            {
+              "key": "Leads Found|number",
+              "numberValue": "={{ $json.body.leads.length }}"
+            }
+          ]
+        }
+      },
+      "id": "create-batch",
+      "name": "Create Batch Record",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [640, 200],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Notion — Cogstack Lead Ingestion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "body.leads",
+        "options": {
+          "destinationFieldName": "lead",
+          "include": "selectedOtherFields",
+          "fieldsToInclude": "body.batch_id"
+        }
+      },
+      "id": "split-leads",
+      "name": "Split Into Individual Leads",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": "={{ $env.LEADS_DB_ID }}",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "formula",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Company Name|title",
+              "condition": "equals",
+              "titleValue": "={{ $json.lead.company_name }}"
+            }
+          ]
+        }
+      },
+      "id": "dedup-check",
+      "name": "Dedup: Check Existing",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1080, 200],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Notion — Cogstack Lead Ingestion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-duplicate",
+              "leftValue": "={{ $json.results?.length ?? 0 }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-new-lead",
+      "name": "Is New Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "={{ $env.LEADS_DB_ID }}",
+        "title": "={{ $json.lead.company_name }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "CIPC Reg Number|richText",
+              "textContent": "={{ $json.lead.cipc_reg ?? '' }}"
+            },
+            {
+              "key": "Industry|select",
+              "selectValue": "={{ $json.lead.industry }}"
+            },
+            {
+              "key": "Segment|select",
+              "selectValue": "={{ $json.lead.segment }}"
+            },
+            {
+              "key": "Province|select",
+              "selectValue": "={{ $json.lead.province }}"
+            },
+            {
+              "key": "City / Area|richText",
+              "textContent": "={{ $json.lead.city ?? '' }}"
+            },
+            {
+              "key": "Website|url",
+              "urlValue": "={{ $json.lead.website ?? '' }}"
+            },
+            {
+              "key": "LinkedIn URL|url",
+              "urlValue": "={{ $json.lead.linkedin ?? '' }}"
+            },
+            {
+              "key": "Public Contact|richText",
+              "textContent": "={{ $json.lead.contact ?? '' }}"
+            },
+            {
+              "key": "Prospect Summary|richText",
+              "textContent": "={{ $json.lead.prospect_summary }}"
+            },
+            {
+              "key": "Company Profile|richText",
+              "textContent": "={{ $json.lead.company_profile ?? '' }}"
+            },
+            {
+              "key": "Fleet Assessment|richText",
+              "textContent": "={{ $json.lead.fleet_assessment ?? '' }}"
+            },
+            {
+              "key": "Tracking Need Reasoning|richText",
+              "textContent": "={{ $json.lead.tracking_reasoning ?? '' }}"
+            },
+            {
+              "key": "Call Script Opener|richText",
+              "textContent": "={{ $json.lead.call_script_opener ?? '' }}"
+            },
+            {
+              "key": "Data Confidence|select",
+              "selectValue": "={{ $json.lead.data_confidence ?? 'Medium' }}"
+            },
+            {
+              "key": "Sources Used|richText",
+              "textContent": "={{ $json.lead.sources_used ?? '' }}"
+            },
+            {
+              "key": "Fleet Likelihood|number",
+              "numberValue": "={{ $json.lead.fleet_likelihood }}"
+            },
+            {
+              "key": "Est. Fleet Size|select",
+              "selectValue": "={{ $json.lead.fleet_size }}"
+            },
+            {
+              "key": "Tracking Need Score|number",
+              "numberValue": "={{ $json.lead.tracking_need }}"
+            },
+            {
+              "key": "Status|select",
+              "selectValue": "Pending QA"
+            },
+            {
+              "key": "Date Found|date",
+              "dateValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "create-lead",
+      "name": "Create Lead in Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1520, 100],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Notion — Cogstack Lead Ingestion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": "={{ $env.LEADS_DB_ID }}",
+        "title": "={{ $json.lead.company_name }} [DUPLICATE]",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status|select",
+              "selectValue": "Duplicate"
+            },
+            {
+              "key": "Date Found|date",
+              "dateValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "key": "Notes|richText",
+              "textContent": "Duplicate detected during batch ingestion. Original already exists in database."
+            }
+          ]
+        }
+      },
+      "id": "mark-duplicate",
+      "name": "Mark as Duplicate",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1520, 340],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Notion — Cogstack Lead Ingestion"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', batch_id: $('Webhook: Lead Ingestion').first().json.body.batch_id, leads_processed: $('Split Into Individual Leads').all().length }) }}"
+      },
+      "id": "respond-success",
+      "name": "Respond: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1740, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: 'Invalid payload. Required: batch_id (string) and leads (array)' }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-error",
+      "name": "Respond: Invalid Payload",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [640, 420]
+    }
+  ],
+  "connections": {
+    "Webhook: Lead Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Batch Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Invalid Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Batch Record": {
+      "main": [
+        [
+          {
+            "node": "Split Into Individual Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Individual Leads": {
+      "main": [
+        [
+          {
+            "node": "Dedup: Check Existing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup: Check Existing": {
+      "main": [
+        [
+          {
+            "node": "Is New Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Lead?": {
+      "main": [
+        [
+          {
+            "node": "Create Lead in Notion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Lead in Notion": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "lead-generation"
+    },
+    {
+      "name": "cogstack"
+    }
+  ]
+}
