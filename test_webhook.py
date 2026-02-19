@@ -16,6 +16,9 @@ import sys
 import json
 import httpx
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN")
