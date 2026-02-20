@@ -6,25 +6,82 @@ This document explains everything you need to know to review and approve leads i
 
 ---
 
-## What Is This?
+## What Is Notion?
 
-An AI agent called **Hugo** automatically finds South African companies that are likely to need vehicle tracking services. He researches each company, scores them, and adds them to this Notion workspace for your review.
+**Notion** is an all-in-one workspace that combines notes, databases, and collaboration in one place. Think of it as a smart spreadsheet where each row can be opened like a document and fields can be linked across tables.
 
-Your job is simple: **look at each lead, decide if it's worth calling, and mark it Approved or Rejected.**
+You access it in your browser at [notion.so](https://notion.so) — no software to install. It works on your phone too.
 
-The call centre (Paul's team) only sees leads you've approved.
+**Why Notion for this pipeline:**
+- It gives you a clean, visual interface to review leads without needing to touch any code or spreadsheets
+- Each lead is a rich page — you can see all the research Hugo did, click through to websites, and leave feedback notes
+- The databases are linked — a lead knows which batch it came from, a batch knows how many leads it contains
+- It's easy to share with Paul's call centre team, with fine-grained control over who can see or edit what
+
+---
+
+## How Notion Fits Into the Pipeline
+
+Here is how a lead travels from discovery to your phone call:
+
+```
+Hugo (AI agent on Raspberry Pi)
+    │
+    │  Searches the web for SA companies
+    │  Scores and enriches each prospect
+    │  Builds a structured batch of leads
+    │
+    ▼
+n8n Webhook (automation server)
+    │
+    │  Validates the payload
+    │  Checks for duplicates
+    │  Creates records in Notion
+    │
+    ▼
+Notion — AI Lead Pipeline
+    │
+    ├── Leads DB       ← YOU WORK HERE (QA review)
+    ├── Batches DB     ← Audit trail of Hugo's runs
+    └── Sources DB     ← Reference: where Hugo searches
+    │
+    ▼
+Claire reviews → QA Approved
+    │
+    ▼
+Paul's Call Centre → Contacted → Converted / Not Interested
+```
+
+**Your role is the quality gate** — you are the human check between the AI and the call centre. Nothing reaches Paul's team without your approval.
 
 ---
 
 ## Your Notion Workspace
 
-You have access to the **AI Lead Pipeline** section in Notion. The key pages are:
+You have access to the **AI Lead Pipeline** section. The three databases are:
 
-| Page | What it's for |
+| Database | Purpose |
 |---|---|
-| **Leads** | All leads Hugo has found — this is where you work |
-| **Batches** | A log of each time Hugo ran a search (for reference) |
-| **Sources** | The data sources Hugo uses (for reference) |
+| **Leads** | Every company Hugo has found — this is where you spend your time |
+| **Batches** | A log of each time Hugo ran a search run |
+| **Sources** | The data sources Hugo uses (CIPC, Yellow Pages, eTenders, etc.) |
+
+### The Leads Database
+This is your main workspace. Each row is one company Hugo found. Click any row to open the full lead record with all the research.
+
+### The Batches Database
+Each row represents one search run by Hugo — it records:
+- **Batch ID** — a unique ID like `BATCH-HUGO-2026-02-20-004`
+- **Run Date** — when Hugo ran the search
+- **Leads Found** — how many companies he found
+- **Leads After Dedup** — how many were new (not already in the system)
+- **Status** — Running / Completed / Partial / Failed
+- **Errors** — any problems Hugo encountered
+
+**How to trace a lead back to its batch:** In the Leads database, click the value in the **Batch** column — it opens the batch record showing exactly when it was run and what Hugo was searching for that day.
+
+### The Sources Database
+Reference data about where Hugo searches — CIPC, Yellow Pages SA, eTenders portal, Road Freight Association, etc. You don't need to work in this database, but it helps you understand where a lead's data came from.
 
 ---
 
@@ -48,12 +105,14 @@ Click on any lead to open it. You'll see:
 | **Data Confidence** | High / Medium / Low — how sure Hugo is about the data |
 | **Fleet Likelihood** | Score 0-10: how likely they operate a vehicle fleet |
 | **Tracking Need Score** | Score 0-10: how urgently they need tracking |
+| **Composite Score** | The overall score — see formula below |
 | **Est. Fleet Size** | Small (1-5) / Medium (6-20) / Large (21+) |
 | **Industry** | Sector (Transport, Construction, Agriculture, etc.) |
 | **Province / City** | Where they operate |
 | **Website / LinkedIn** | Links to verify the company |
 | **Public Contact** | Phone or email for the call centre to use |
 | **CIPC Reg Number** | Company registration number (verify at cipc.co.za if needed) |
+| **Batch** | Which Hugo search run this lead came from |
 
 ---
 
