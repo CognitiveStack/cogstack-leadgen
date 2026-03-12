@@ -125,7 +125,8 @@ Notion API version in use: `2022-06-28` (stable). Formula and Rollup properties 
 | `n8n_code_node.js` | Active B2B n8n Code node — paste into v2 workflow |
 | `create_b2c_database.py` | One-time B2C schema setup; seeds 6 B2C sources into shared Sources DB |
 | `test_b2c_webhook.py` | Sends 3 B2C sample leads; validates end-to-end B2C pipeline |
-| `n8n_b2c_code_node.js` | Active B2C n8n Code node — paste into B2C workflow |
+| `n8n_b2c_code_node.js` | Active B2C n8n Code node — DB IDs pre-filled; paste into B2C workflow |
+| `n8n_b2c_workflow.json` | Importable n8n B2C workflow (Webhook → Code → Respond); set header auth credential after import |
 | `notion_config.json` | Generated DB IDs for both B2B and B2C (committed for reference) |
 | `.claude/docs/` | Session notes, setup guide, workflow docs |
 | `.agents/plans/` | Feature implementation plans |
