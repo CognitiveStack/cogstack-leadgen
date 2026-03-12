@@ -47,14 +47,16 @@ This is an unconventional approach: instead of writing traditional scraping scri
 
 ### Current State
 
-Hugo is in **Phase 1 (Supervisor Mode)**. The hard rules in `SYSTEM.md` currently disable:
-- Shell execution
-- Browser automation
-- External API calls (beyond model providers)
+Hugo is in **Phase 2 (HTTP Enabled)**. HTTP `$fetch` is allowed to allowlisted endpoints only. Shell execution requires manual approval via the OpenClaw dashboard. No browser automation yet.
 
-This means Hugo **cannot yet execute the lead generation workflow autonomously**. The architecture is in place; the capability unlock is a Phase 2/3 step (edit `SYSTEM.md` to graduate phases).
+**HTTP allowlist:**
+- `https://n8n.bigtorig.com/webhook/lead-ingestion-v2` — B2B pipeline
+- `https://n8n.bigtorig.com/webhook/b2c-lead-ingestion` — B2C pipeline
+- `http://localhost:8080` — SearXNG local search
 
-The n8n webhook and Notion databases are ready and waiting — they just need Hugo to start posting to them.
+**Both B2B and B2C pipelines are live and validated.** Hugo has posted real batches to both webhooks. The exec approval prompt is the main friction point — Phase 3 graduation will remove it.
+
+**Known limitation:** Web search (Brave/SearXNG) returns forum threads without contact info. Gumtree "Wanted" ads have visible phone numbers but require the browser tool. Browser tool access is a Phase 3 unlock.
 
 ### Intended Data Flow
 
@@ -157,19 +159,16 @@ COGSTACK_WEBHOOK_TOKEN=<token from cogstack-leadgen .env>
 
 ## Phase Roadmap for Hugo's Lead Gen Capability
 
-### Phase 1 (Now) — Supervisor Mode
+### Phase 1 (Complete) — Supervisor Mode
 - Hugo exists, WhatsApp connected, heartbeat running
 - No shell/browser/external API access
-- **Lead gen: not possible yet**
-- Action needed: build the skill definition; prepare the config
 
-### Phase 2 — Shell + HTTP Enabled
-- Edit `SYSTEM.md` on Pi4 to graduate to Phase 2
-- HTTP `$fetch` / `exec` tools enabled
-- Hugo can POST to n8n webhook directly
-- Hugo can query SearXNG via HTTP
-- **Lead gen: possible with manual trigger (WhatsApp command)**
-- Action: test with "Hugo, find me 3 transport companies in Gauteng"
+### Phase 2 (Current) — HTTP Enabled
+- HTTP `$fetch` allowed to allowlisted endpoints
+- Shell execution requires manual approval in OpenClaw dashboard
+- Hugo can POST to both B2B and B2C n8n webhooks
+- **Lead gen: working with manual trigger**
+- Next: graduate to Phase 3 to remove exec approval friction
 
 ### Phase 3 — Scheduled Autonomy
 - Cron job or HEARTBEAT.md task runs lead gen automatically
@@ -220,9 +219,8 @@ When graduating to Phase 2/3, review the tool policy carefully. Lead gen involve
 
 ## Immediate Next Steps
 
-1. **Write the lead gen skill** — create `skills/cogstack-leadgen/SKILL.md` in the hugo repo with search templates, scoring instructions, enrichment prompts, and the webhook JSON schema
-2. **Add webhook config to Pi4 `~/.env`** — `COGSTACK_WEBHOOK_URL` and `COGSTACK_WEBHOOK_TOKEN`
-3. **Graduate Hugo to Phase 2** — edit `SYSTEM.md` to enable HTTP tool access
-4. **Manual test via WhatsApp** — send Hugo "Find 3 transport companies in Gauteng and send them to the lead pipeline"
-5. **Verify in Notion** — confirm leads appear with Status = "Pending QA"
-6. **Add to HEARTBEAT.md** — schedule automated runs 2-3x per day once manual test passes
+1. **Graduate Hugo to Phase 3** — edit `SYSTEM.md` on Pi4 to enable shell execution without approval prompts; enable browser tool for Gumtree scraping
+2. **Enable browser tool** — Hugo needs it to scrape Gumtree "Wanted" ads where phone numbers are visible (billable B2C leads)
+3. **Test Gumtree B2C run** — send Hugo "Use browser tool to find Gumtree Wanted ads for car trackers — those have visible phone numbers"
+4. **Add to HEARTBEAT.md** — schedule automated B2B and B2C runs 2-3x per week once quality is validated
+5. **B2B pipeline test** — Hugo has not yet been tested on B2B leads; trigger "Hugo, find me some B2B leads" once Phase 3 is active
