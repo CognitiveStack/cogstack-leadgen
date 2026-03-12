@@ -1,13 +1,10 @@
 {
-
   "leads_database_id": "30b89024-cd3d-810a-bb28-e46825320802",
-
   "sources_database_id": "30b89024-cd3d-8142-a064-d40ed42a3443",
-
   "batches_database_id": "30b89024-cd3d-8180-b7d8-ed542170e4d1",
-
   "notion_api_version": "2022-06-28",
-
-  "created_at": "2026-02-18T02:21:22.414309"
-
+  "created_at": "2026-02-18T02:21:22.414309",
+  "b2c_leads_database_id": "32089024-cd3d-812e-a6c6-d8e21d9126b3",
+  "b2c_batches_database_id": "32089024-cd3d-81a7-8691-ca999aa1494f",
+  "b2c_created_at": "2026-03-11T21:21:17.557892"
 }

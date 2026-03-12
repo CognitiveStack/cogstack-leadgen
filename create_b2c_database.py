@@ -17,6 +17,7 @@ Requirements:
 import os
 import sys
 import json
+import time
 import httpx
 from datetime import datetime
 from dotenv import load_dotenv
@@ -128,7 +129,6 @@ def create_b2c_batches_database(client: httpx.Client) -> str:
 
 def create_b2c_leads_database(
     client: httpx.Client,
-    sources_db_id: str,
     batches_db_id: str,
 ) -> str:
     """Create the B2C Leads database with consumer-oriented schema."""
@@ -237,12 +237,11 @@ def create_b2c_leads_database(
                 "single_property": {},
             }
         },
-        "Source": {
-            "relation": {
-                "database_id": sources_db_id,
-                "single_property": {},
-            }
-        },
+        # Note: Source relation omitted — Notion does not allow two single_property
+        # relations to the same database from different databases (data_source_id conflict
+        # with B2B Leads → Sources relation). B2C source tracking uses the Intent Source
+        # (select) and Intent Source URL (url) fields instead, which are more specific
+        # for consumer lead sourcing.
     }
 
     return create_database(client, "B2C Leads", "👤", properties)
@@ -448,8 +447,12 @@ def main():
         # 1. B2C Batches first (no dependencies)
         batches_db_id = create_b2c_batches_database(client)
 
-        # 2. B2C Leads (depends on Batches and shared Sources for relations)
-        leads_db_id = create_b2c_leads_database(client, sources_db_id, batches_db_id)
+        # Allow Notion to propagate the new database before referencing it in a relation
+        print("   ⏳ Waiting for Notion to propagate B2C Batches DB...")
+        time.sleep(4)
+
+        # 2. B2C Leads (depends on Batches for relation; Source relation omitted — see note in function)
+        leads_db_id = create_b2c_leads_database(client, batches_db_id)
 
         # 3. Seed B2C sources into shared Sources DB
         seed_b2c_sources(client, sources_db_id)
