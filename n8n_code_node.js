@@ -3,7 +3,7 @@
 // ===========================================
 
 // CONFIGURE THESE THREE VALUES:
-const NOTION_API_KEY = 'NOTION_API_KEY_REDACTED';
+const NOTION_API_KEY = process.env.NOTION_API_KEY; // Set in n8n → Settings → Environment Variables
 const LEADS_DB_ID = '30b89024-cd3d-810a-bb28-e46825320802';
 const BATCHES_DB_ID = '30b89024-cd3d-8180-b7d8-ed542170e4d1';
 
