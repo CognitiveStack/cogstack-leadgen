@@ -1,6 +1,6 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.1
+**Version:** 1.2
 **Phase:** 2 (HTTP + SearXNG)
 **Agent:** Hugo (OpenClaw on Pi4)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
@@ -57,6 +57,15 @@ GET http://localhost:8080/search?q=<URL-encoded query>&format=json&language=en
 - It's general discussion with no purchasing intent (e.g., "what does GPS tracking do?")
 - It's about OBD dongles, anti-theft alarms, or devices clearly unrelated to tracking subscriptions
 - The URL is a category/listing page, not a specific post or review
+- It's a news article or editorial (reject if URL or title matches `/news/`, "best trackers", "we tested", "plans from R", "review roundup")
+
+**URL path rules per source (enforce strictly):**
+| Source | Accept | Reject |
+|--------|--------|--------|
+| MyBroadband | `/forum/threads/…` | `/news/…`, `/broadband/…`, category pages |
+| Reddit | `/r/southafrica/comments/…` | subreddit index, `/r/southafrica/` root |
+| Hellopeter | `/[company]/reviews/[id]` | `/[company]/` category, search results |
+| OLX | specific wanted ad URL | `/ads/…` listing pages |
 
 **When uncertain:** err on the side of submitting. Claire will QA reject if needed, and that feedback improves the pipeline.
 
