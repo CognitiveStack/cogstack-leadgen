@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api:*)",
+      "WebFetch(domain:docs.n8n.io)",
+      "WebFetch(domain:community.n8n.io)",
+      "Bash(python3 -m py_compile test_b2c_webhook.py && echo \"✅ test_b2c_webhook.py OK\")",
+      "Bash(node --check n8n_b2c_code_node.js 2>&1 && echo \"✅ n8n_b2c_code_node.js syntax OK\" || echo \"⚠️ Note: n8n-specific globals \\($input, this.helpers\\) cause node --check to fail outside n8n context\")",
+      "Bash(node --check n8n_code_node.js 2>&1 | head -3)",
+      "Bash(ls -la /opt/projects/cartrack-leadgen/*.py /opt/projects/cartrack-leadgen/*.js /opt/projects/cartrack-leadgen/notion_config.json)",
+      "Bash(python3 -m py_compile create_b2c_database.py && echo \"✅ syntax OK\" && uv run create_b2c_database.py)",
+      "Bash(scp /tmp/b2b_skill.md pi4:/tmp/b2b_skill.md && scp /tmp/b2c_skill.md pi4:/tmp/b2c_skill.md && ssh pi4 \"\n  mkdir -p ~/.openclaw/workspace/skills/cogstack-b2b-leadgen\n  mkdir -p ~/.openclaw/workspace/skills/cogstack-b2c-leadgen\n  cp /tmp/b2b_skill.md ~/.openclaw/workspace/skills/cogstack-b2b-leadgen/SKILL.md\n  cp /tmp/b2c_skill.md ~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md\n  rm -rf ~/.openclaw/workspace/skills/cogstack-leadgen\n  echo 'Done'\n\")",
+      "Bash(git add:*)"
+    ]
+  }
+}
