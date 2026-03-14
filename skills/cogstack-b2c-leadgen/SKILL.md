@@ -1,6 +1,6 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.2
+**Version:** 1.3
 **Phase:** 2 (HTTP + SearXNG)
 **Agent:** Hugo (OpenClaw on Pi4)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
@@ -32,7 +32,10 @@ GET http://localhost:8080/search?q=<URL-encoded query>&format=json&language=en
 
 | Source | SearXNG Query | Phase |
 |--------|--------------|-------|
-| Hellopeter | `site:hellopeter.com cartrack OR tracker OR "vehicle tracking" 1 star 2025 OR 2026` | 2 — ACTIVE |
+| Hellopeter (Cartrack) | `site:hellopeter.com/cartrack/reviews cartrack` | 2 — ACTIVE |
+| Hellopeter (Netstar) | `site:hellopeter.com/netstar/reviews netstar` | 2 — ACTIVE |
+| Hellopeter (Ctrack) | `site:hellopeter.com/ctrack-sa/reviews ctrack` | 2 — ACTIVE |
+| Hellopeter (Matrix) | `site:hellopeter.com/mix-telematics-africa/reviews matrix` | 2 — ACTIVE |
 | MyBroadband | `site:mybroadband.co.za "car tracker" OR "vehicle tracker" OR "GPS tracker" South Africa` | 2 — ACTIVE |
 | Reddit r/southafrica | `site:reddit.com/r/southafrica tracker OR "vehicle tracking" OR "car theft"` | 2 — ACTIVE |
 | OLX Wanted | `site:olx.co.za wanted tracker OR "GPS tracking"` | 2 — ACTIVE |
@@ -64,7 +67,7 @@ GET http://localhost:8080/search?q=<URL-encoded query>&format=json&language=en
 |--------|--------|--------|
 | MyBroadband | `/forum/threads/…` | `/news/…`, `/broadband/…`, category pages |
 | Reddit | `/r/southafrica/comments/…` | subreddit index, `/r/southafrica/` root |
-| Hellopeter | `/[company]/reviews/[id]` | `/[company]/` category, search results |
+| Hellopeter | `/cartrack/reviews/[id]`, `/netstar/reviews/[id]`, `/ctrack-sa/reviews/[id]`, `/mix-telematics-africa/reviews/[id]` | company root, non-`/reviews/` paths, search results |
 | OLX | specific wanted ad URL | `/ads/…` listing pages |
 
 **When uncertain:** err on the side of submitting. Claire will QA reject if needed, and that feedback improves the pipeline.
