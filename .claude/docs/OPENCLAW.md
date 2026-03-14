@@ -27,7 +27,7 @@ OpenClaw runtime  ←→  Hugo agent workspace (~/.openclaw/workspace/)
 | Email | hugo@cogstack.co.za |
 | Channel | WhatsApp (primary), responds only to Charles (+27836177469) |
 | Vibe | Casual, sharp, no-nonsense. Skips filler. Has opinions. |
-| Phase | Phase 1 — Supervisor Mode (read-only, no shell, no browser) |
+| Phase | Phase 2 — HTTP + Browser enabled |
 
 Hugo wakes up fresh each session. His continuity comes from markdown files in his workspace:
 - `SOUL.md` — who he is
@@ -41,161 +41,199 @@ Hugo wakes up fresh each session. His continuity comes from markdown files in hi
 
 ### The Vision
 
-Hugo is the **autonomous scraping brain** for `cogstack-leadgen`. His job is to discover South African companies that are high-probability fleet operators and vehicle tracking prospects, enrich them with AI-generated analysis, and POST them as structured lead batches to the n8n webhook.
+Hugo is the **autonomous scraping brain** for `cogstack-leadgen`. His job is to discover South African individuals and companies that are high-probability vehicle tracking prospects, enrich them with AI-generated analysis, and POST them as structured lead batches to the n8n webhook.
 
 This is an unconventional approach: instead of writing traditional scraping scripts, the AI *is* the scraper. Hugo reasons about pages, extracts structured data, evaluates prospects, and decides what to send — all autonomously.
 
-### Current State
+### Current State (as of 2026-03-14)
 
-Hugo is in **Phase 2 (HTTP Enabled)**. HTTP `$fetch` is allowed to allowlisted endpoints only. Shell execution requires manual approval via the OpenClaw dashboard. No browser automation yet.
+Hugo is in **Phase 2 (HTTP + Browser enabled)**. The B2C skill is live and has completed its first successful run (6 leads created, 1 duplicate skipped).
+
+**Available tools (confirmed):** `read, write, edit, exec, process, web_search, web_fetch, browser, canvas, nodes, cron, message, gateway, agents_list, sessions_list, sessions_history, sessions_send, subagents, session_status, image, memory_search, memory_get, pdf, whatsapp_login, tts`
 
 **HTTP allowlist:**
 - `https://n8n.bigtorig.com/webhook/lead-ingestion-v2` — B2B pipeline
 - `https://n8n.bigtorig.com/webhook/b2c-lead-ingestion` — B2C pipeline
-- `http://localhost:8080` — SearXNG local search
+- `http://localhost:8080` — SearXNG (unreliable — see Known Issues)
 
-**Both B2B and B2C pipelines are live and validated.** Hugo has posted real batches to both webhooks. The exec approval prompt is the main friction point — Phase 3 graduation will remove it.
+**Both B2B and B2C pipelines are live and validated.** Hugo has posted real batches to both webhooks.
 
-**Known limitation:** Web search (Brave/SearXNG) returns forum threads without contact info. Gumtree "Wanted" ads have visible phone numbers but require the browser tool. Browser tool access is a Phase 3 unlock.
-
-### Intended Data Flow
+### Actual Data Flow (B2C, current)
 
 ```
 Hugo (OpenClaw on Pi4)
     │
-    │  1. Heartbeat triggers lead generation task (scheduled)
-    │  2. Hugo searches SearXNG (local, http://localhost:8080)
-    │     for SA companies matching target profiles
-    │  3. Hugo scrapes/enriches prospect data using LLM reasoning
-    │  4. Hugo scores each prospect (Composite Score formula)
-    │  5. Hugo POSTs batch to n8n webhook
+    │  1. web_search tool (Brave API) — discovery queries per source
+    │  2. web_fetch — fetch individual post/review/ad pages
+    │  3. LLM extraction subagent (openrouter/openai/gpt-4o-mini)
+    │     extracts fields + scores (intent_strength, urgency_score)
+    │  4. URL filter — reject news articles, category pages (see SKILL.md)
+    │  5. Composite Score filter — discard if score < 6
+    │  6. POST batch to n8n webhook
+    │  7. Log response + WhatsApp report to Charles
     ▼
-n8n Webhook (https://n8n.bigtorig.com/webhook/lead-ingestion-v2)
-    │  Authorization: Bearer <WEBHOOK_TOKEN>
+n8n Webhook (https://n8n.bigtorig.com/webhook/b2c-lead-ingestion)
+    │  Authorization: Bearer <B2C_WEBHOOK_TOKEN>
     ▼
-Notion Leads DB → QA Review (Claire) → Call Centre (Paul)
+Notion B2C Leads DB → QA Review (Claire) → B2C Call Centre
 ```
 
-### SearXNG — Hugo's Search Engine
+---
 
-A SearXNG instance runs on Pi4 at `http://localhost:8080` (Docker). It aggregates results from Google, Bing, DuckDuckGo, Startpage, and Yandex with JSON API enabled. This gives Hugo a local, no-rate-limit, no-tracking search tool — crucial for autonomous scraping without hitting Google's bot detection.
+## Known Issues & Workarounds
+
+### SearXNG — Mostly Broken (2026-03-14)
+
+SearXNG runs at `http://localhost:8080` (Docker on Pi4) but is effectively unusable for lead gen:
+
+| Engine | Status |
+|--------|--------|
+| Brave | Suspended: too many requests (rate-limited) |
+| DuckDuckGo | Suspended: CAPTCHA |
+| Startpage | Suspended: CAPTCHA |
+| Yandex | Suspended: CAPTCHA |
+
+**Workaround:** Hugo now uses the `web_search` tool (Brave API directly) for discovery instead of SearXNG. This bypasses the engine suspension entirely. SearXNG is left running but not used.
+
+### Gumtree — Blocked by Bot Protection
+
+Gumtree blocks both headless Chromium (browser tool) and direct HTTP requests. The block is **PerimeterX / Cloudflare Bot Management** — it fingerprints TLS handshake, request timing, and browser entropy, not just the User-Agent string.
+
+Hugo's browser tool cannot set the network-level User-Agent header (only in-page JS spoofing, which doesn't help at the edge).
+
+**Current status:** Gumtree is **Phase 3 stretch goal**. Options when we return to it:
+- Playwright + `playwright-stealth` plugin (install via npm on Pi4)
+- Residential proxy (most reliable, adds cost)
+- Manual seed: Charles periodically pastes Gumtree URLs into chat for Hugo to process
+
+**Why Gumtree matters:** It's the only Phase 2-accessible source where phone numbers appear directly on the page. All other sources (Hellopeter, MyBroadband, Reddit, OLX) yield usernames/handles at best.
+
+### Hellopeter — Query Pattern Needs Work
+
+Brave search for Hellopeter tends to return the Cartrack company page, not individual review URLs. Need query patterns that force review-level URLs (e.g. include the review ID pattern in the query).
 
 ---
 
 ## Model Strategy for Lead Generation
 
-Hugo's model strategy is budget-conscious. Key rule: **never use Claude for routine work**.
+Hugo's model strategy is budget-conscious. Key rule: **never use Claude for routine work, never use direct Anthropic API** (all Claude access goes via OpenRouter).
 
-| Task | Model | Cost |
-|------|-------|------|
-| Daily WhatsApp chat / heartbeats | DeepSeek v3 (OpenRouter) | ~$0.27/$1.10 per M tokens |
-| Routine subagent tasks | DeepSeek v3 | same |
-| Local fallback (OpenRouter down) | qwen2.5:14b via Ollama (desktop) | $0 |
-| **Lead generation / enrichment** | Should be a subagent | see below |
-| Premium manual tasks | Claude Sonnet 4 (on-demand) | expensive |
+| Task | Model | Route |
+|------|-------|-------|
+| Daily WhatsApp chat / heartbeats | DeepSeek v3 | OpenRouter |
+| Routine subagent tasks | DeepSeek v3 | OpenRouter |
+| Local fallback (OpenRouter down) | qwen2.5:14b via Ollama (desktop) | Local |
+| **B2C enrichment subagent** | **gpt-4o-mini** | **OpenRouter** |
+| Premium manual tasks | Claude Sonnet 4.6 | OpenRouter |
 
-### Subagent Pattern for Scraping
+**Why gpt-4o-mini for enrichment:** Cheapest capable model for structured JSON extraction (~$0.15/$0.60 per M tokens). Excellent at following exact output schemas. No Anthropic credit dependency — routes through OpenRouter.
 
-For lead generation specifically, the recommended pattern is:
-
-> **Main session (cheap model)** dispatches a **subagent (expensive model)** to do the actual scraping and enrichment reasoning.
-
-The main Hugo session (DeepSeek) handles scheduling, coordination, and POST to webhook. The subagent (Claude Haiku 4.5 or Sonnet) does the heavy reasoning: reading company pages, evaluating fleet likelihood, writing the prospect summary and call script opener.
-
-This keeps costs low — only the enrichment reasoning needs the expensive model, not the orchestration.
+### Subagent Pattern
 
 ```
 Hugo main session (DeepSeek v3)
     │
-    ├─► "Find 5 transport companies in KZN on SearXNG"
+    ├─► web_search for each source query
     │
-    └─► Subagent (Claude Haiku 4.5)
-            ├── Reads company pages
-            ├── Evaluates fleet likelihood (0-10)
-            ├── Evaluates tracking need (0-10)
-            ├── Writes prospect summary
-            ├── Writes fleet assessment
-            ├── Writes call script opener
-            └── Returns structured JSON
+    ├─► web_fetch each candidate URL
+    │
+    └─► Subagent (openrouter/openai/gpt-4o-mini)
+            ├── Reads page text
+            ├── Extracts: name, phone, email, province, city, vehicle
+            ├── Writes intent_signal (verbatim quote)
+            ├── Scores intent_strength + urgency_score (0-10)
+            ├── Writes call_script_opener
+            └── Returns structured JSON (_meta.llm_used: true)
     │
     └─► Hugo POSTs enriched batch to n8n webhook
 ```
 
 ---
 
-## The Lead Generation Skill (To Be Built)
+## B2C Skill
 
-Hugo uses a **skill** system for structured tasks. A skill is a markdown file (`SKILL.md`) that defines a tool's purpose, inputs, outputs, and usage instructions. Hugo reads the skill file to know how to use a capability.
+The B2C lead generation skill is live and version-controlled in this repo.
 
-The lead generation workflow needs to be defined as a skill. Proposed structure:
+| Location | Path |
+|----------|------|
+| Source of truth | `skills/cogstack-b2c-leadgen/SKILL.md` (this repo) |
+| Deployed to Pi4 | `~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md` |
+| Runner script | `~/.openclaw/workspace/scripts/b2c_run.py` |
+| Run logs | `~/.openclaw/workspace/memory/b2c-run-YYYY-MM-DD.json` |
+| State tracking | `~/.openclaw/workspace/memory/b2c-state.json` |
 
-```
-~/.openclaw/workspace/skills/cogstack-leadgen/SKILL.md
-```
+**Current skill version:** 1.2
 
-### Skill Design
+**Trigger:** WhatsApp `"Hugo, B2C leads"` or HEARTBEAT.md schedule (2-3x/week)
 
-The skill should define:
+**URL qualification rules (per source):**
 
-1. **Trigger** — how Hugo knows to run it (heartbeat schedule, WhatsApp command, or cron)
-2. **Search query templates** — what to search on SearXNG for each data source
-3. **Prospect evaluation criteria** — what makes a good lead (fleet size, sector, geography)
-4. **Scoring instructions** — how to compute Fleet Likelihood, Tracking Need, Fleet Size Bonus
-5. **Enrichment prompts** — how to write the prospect summary, fleet assessment, call script
-6. **Output schema** — the exact JSON structure to POST to the webhook
-7. **Dedup awareness** — don't resubmit companies already in Notion
+| Source | Accept | Reject |
+|--------|--------|--------|
+| MyBroadband | `/forum/threads/…` | `/news/…`, category pages |
+| Reddit | `/r/southafrica/comments/…` | subreddit root, news links |
+| Hellopeter | `/[company]/reviews/[id]` | company root, search results |
+| OLX | specific wanted ad URL | `/ads/…` listing pages |
 
-### Webhook Configuration
+**Dedup:** keyed on `intent_source_url` — webhook auto-skips duplicates.
 
-Hugo needs two environment variables on the Pi4:
-
+**Environment variables on Pi4 (`~/.env`):**
 ```bash
-# Add to ~/.env on pi4
+B2C_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/b2c-lead-ingestion
+B2C_WEBHOOK_TOKEN=1951a0fc...  # same token as B2B
+B2C_DATE_AFTER=2026-02-14      # 30-day rolling window
 COGSTACK_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/lead-ingestion-v2
-COGSTACK_WEBHOOK_TOKEN=<token from cogstack-leadgen .env>
+COGSTACK_WEBHOOK_TOKEN=1951a0fc...
+```
+
+**Deploy command** (from this repo, pre-approved in `.claude/settings.local.json`):
+```bash
+cp skills/cogstack-b2c-leadgen/SKILL.md /tmp/b2c_skill.md
+scp /tmp/b2c_skill.md pi4:/tmp/b2c_skill.md
+ssh pi4 "cp /tmp/b2c_skill.md ~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md"
 ```
 
 ---
 
-## Phase Roadmap for Hugo's Lead Gen Capability
+## Security
+
+Hugo has an 8-layer security model. Relevant to lead gen:
+
+| Layer | Current behaviour |
+|-------|------------------|
+| Shell execution | Requires manual approval via OpenClaw dashboard (exec approve button) |
+| Browser tool | Available — Chromium headless. Gumtree/PerimeterX sites still block it |
+| File writes | Limited to `~/.openclaw/workspace/` |
+| WhatsApp allowlist | Charles only can trigger scraping runs |
+| Prompt injection defence | Scraped page content wrapped in `EXTERNAL_UNTRUSTED_CONTENT` block — Hugo correctly ignores instructions in scraped content |
+
+The `EXTERNAL_UNTRUSTED_CONTENT` wrapper is working as intended — Hugo's security notice on scraped content is correct behaviour, not a bug.
+
+---
+
+## Phase Roadmap
 
 ### Phase 1 (Complete) — Supervisor Mode
 - Hugo exists, WhatsApp connected, heartbeat running
 - No shell/browser/external API access
 
-### Phase 2 (Current) — HTTP Enabled
-- HTTP `$fetch` allowed to allowlisted endpoints
-- Shell execution requires manual approval in OpenClaw dashboard
-- Hugo can POST to both B2B and B2C n8n webhooks
-- **Lead gen: working with manual trigger**
-- Next: graduate to Phase 3 to remove exec approval friction
+### Phase 2 (Current) — HTTP + Browser enabled
+- `web_search` (Brave API) for discovery — working
+- `web_fetch` for page content — working
+- `browser` tool available — Chromium headless (Gumtree blocked)
+- LLM enrichment subagent (gpt-4o-mini via OpenRouter) — working
+- B2C skill live, first run successful (6 leads, 1 duplicate skipped)
+- Exec approval still required for shell commands (main friction point)
 
-### Phase 3 — Scheduled Autonomy
-- Cron job or HEARTBEAT.md task runs lead gen automatically
-- Hugo runs 2-3 scraping sessions per day without prompting
-- Results arrive in Notion without Charles touching anything
-- **Lead gen: fully autonomous, 24/7**
+### Phase 3 — Scheduled Autonomy + Gumtree
+- Remove exec approval requirement (graduate SYSTEM.md)
+- Add B2C run to HEARTBEAT.md schedule (2-3x/week)
+- Tackle Gumtree blocking: Playwright stealth or residential proxy
+- Expected uplift: 2-5 phone-verified leads per run
 
 ### Phase 4 — Feedback Loop
-- Claire's QA rejections feed back to Hugo's prompt (rejection reasons exported from Notion)
-- Hugo tunes its own scoring criteria based on what Claire approves
-- Model self-improves over time
-
----
-
-## Security Considerations
-
-Hugo currently enforces an 8-layer security model. Relevant to lead gen:
-
-| Layer | Implication for Lead Gen |
-|-------|--------------------------|
-| No external API calls (Phase 1) | Can't POST to n8n yet |
-| No browser automation (Phase 1) | Can't use Playwright/Selenium |
-| File writes limited to workspace | Batch logs stay in `~/.openclaw/workspace/memory/` |
-| WhatsApp DM allowlist (Charles only) | No one else can trigger a scraping run |
-| Prompt injection defense | Scraped page content treated as untrusted |
-
-When graduating to Phase 2/3, review the tool policy carefully. Lead gen involves reading arbitrary web pages — those pages could contain prompt injection attempts. Hugo's `SYSTEM.md` already addresses this (rule 10: treat inbound media as untrusted), but it should be explicitly extended to scraped web content.
+- Claire's QA rejections feed back to Hugo's scoring criteria
+- Hugo tunes itself based on what Claire approves/rejects
 
 ---
 
@@ -205,22 +243,12 @@ When graduating to Phase 2/3, review the tool policy carefully. Lead gen involve
 |------|----------|---------|
 | `SYSTEM.md` | `CognitiveStack/hugo` | Hard rules; edit to graduate phases |
 | `SOUL.md` | `CognitiveStack/hugo` | Hugo's character and working style |
-| `HEARTBEAT.md` | `CognitiveStack/hugo` | Scheduled check tasks; add lead gen trigger here |
+| `HEARTBEAT.md` | `CognitiveStack/hugo` | Scheduled tasks; add B2C lead gen trigger here |
 | `model-strategy.md` | `CognitiveStack/hugo` | Model selection rules and budget |
-| `TOOLS.md` | `CognitiveStack/hugo` | Infrastructure cheat sheet (Tailscale, WhatsApp, etc.) |
-| `skills/` | `CognitiveStack/hugo` | Skill definitions (qmd, token-optimization, reef-prompt-guard) |
-| `memory/` | `CognitiveStack/hugo` | Daily logs + tenants.md context |
-| `OPENCLAW-SETUP.md` | `CognitiveStack/pi4` | Full Pi4 setup and architecture reference |
-| `searxng/` | `CognitiveStack/pi4` | SearXNG Docker config (Hugo's search engine) |
-| `n8n_code_node.js` | `cogstack-leadgen` | The n8n Code node Hugo POSTs to |
-| `.env` | `cogstack-leadgen` | Webhook URL + token (copy relevant vars to Pi4 `~/.env`) |
-
----
-
-## Immediate Next Steps
-
-1. **Graduate Hugo to Phase 3** — edit `SYSTEM.md` on Pi4 to enable shell execution without approval prompts; enable browser tool for Gumtree scraping
-2. **Enable browser tool** — Hugo needs it to scrape Gumtree "Wanted" ads where phone numbers are visible (billable B2C leads)
-3. **Test Gumtree B2C run** — send Hugo "Use browser tool to find Gumtree Wanted ads for car trackers — those have visible phone numbers"
-4. **Add to HEARTBEAT.md** — schedule automated B2B and B2C runs 2-3x per week once quality is validated
-5. **B2B pipeline test** — Hugo has not yet been tested on B2B leads; trigger "Hugo, find me some B2B leads" once Phase 3 is active
+| `TOOLS.md` | gateway workspace | Infrastructure cheat sheet + API discovery |
+| `skills/cogstack-b2c-leadgen/SKILL.md` | this repo + Pi4 | B2C lead gen playbook (source of truth here) |
+| `scripts/b2c_run.py` | Pi4 workspace | B2C runner script (LLM enrichment pass active) |
+| `memory/b2c-run-*.json` | Pi4 workspace | Per-run logs |
+| `memory/b2c-state.json` | Pi4 workspace | Run state / submitted URL tracking |
+| `n8n_b2c_code_node.js` | this repo | n8n Code node Hugo POSTs to |
+| `.env` (Pi4) | `~/.env` on Pi4 | Webhook URLs + tokens + date window |
