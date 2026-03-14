@@ -1,6 +1,6 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.0
+**Version:** 1.1
 **Phase:** 2 (HTTP + SearXNG)
 **Agent:** Hugo (OpenClaw on Pi4)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
@@ -94,7 +94,9 @@ B2C Composite Score = (Intent Strength × 0.6) + (Urgency Score × 0.4)
 
 ## 5. Subagent Enrichment Instructions
 
-For each qualified candidate URL, spawn a **Claude Haiku 4.5** subagent with the following prompt. The main Hugo session (DeepSeek) handles orchestration; Haiku does the reasoning.
+For each qualified candidate URL, spawn a **gpt-4o-mini** subagent via OpenRouter with the following prompt. The main Hugo session (DeepSeek) handles orchestration; gpt-4o-mini does the JSON extraction — cheapest capable model for structured output, routed through OpenRouter (no direct Anthropic dependency).
+
+**Model:** `openrouter/openai/gpt-4o-mini`
 
 **Subagent prompt template (paste verbatim, filling in the placeholders):**
 
@@ -132,7 +134,7 @@ Examples:
 - "Hi, I came across your MyBroadband post about GPS trackers — I'd love to help you find the right fit."
 ```
 
-**After receiving Haiku's JSON:** validate that all required fields are present before including in the batch. If `intent_source_url` is missing or `intent_signal` is empty, discard the lead.
+**After receiving the JSON:** validate that all required fields are present before including in the batch. If `intent_source_url` is missing or `intent_signal` is empty, discard the lead.
 
 ---
 
@@ -242,7 +244,7 @@ Execute these steps in order:
 
 4. ENRICH
    For each fetched candidate:
-   - Spawn Claude Haiku 4.5 subagent with the enrichment prompt (Section 5)
+   - Spawn gpt-4o-mini subagent via OpenRouter (openrouter/openai/gpt-4o-mini) with the enrichment prompt (Section 5)
    - Receive structured JSON back
    - Apply scoring threshold: discard if Composite Score < 5
    - Validate required fields are present
@@ -288,7 +290,7 @@ Expected uplift: 2–5 phone-verified leads per run. Revisit this section when H
 |------|-------|
 | Webhook URL | `https://n8n.bigtorig.com/webhook/b2c-lead-ingestion` |
 | SearXNG | `http://localhost:8080/search?q=<query>&format=json&language=en` |
-| Enrichment model | Claude Haiku 4.5 (subagent) |
+| Enrichment model | `openrouter/openai/gpt-4o-mini` (subagent) |
 | Orchestration model | DeepSeek v3 (main Hugo session) |
 | Dedup key | `intent_source_url` |
 | Scoring threshold | Composite Score ≥ 6 |
