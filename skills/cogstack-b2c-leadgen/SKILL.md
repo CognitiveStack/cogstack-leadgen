@@ -1,6 +1,6 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.3
+**Version:** 1.4
 **Phase:** 2 (HTTP + SearXNG)
 **Agent:** Hugo (OpenClaw on Pi4)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
@@ -25,10 +25,13 @@
 
 Run each Phase 2 query against SearXNG. Skip Phase 3 sources until browser is unlocked.
 
-**SearXNG API call:**
-```
-GET http://localhost:8080/search?q=<URL-encoded query>&format=json&language=en
-```
+**Discovery method:** `web_search` tool (Brave API directly). SearXNG (`http://localhost:8080`) is available as fallback only — its engines are currently suspended (CAPTCHA/rate-limited as of 2026-03-14) and should not be relied on.
+
+**Discovery flow:**
+1. Call `web_search` for each query below
+2. Collect result URLs → write to `memory/b2c-seed-urls.json`
+3. Proceed immediately to FETCH step using those URLs
+4. (Fallback only) If `web_search` unavailable, read existing seed file or fall back to SearXNG
 
 | Source | SearXNG Query | Phase |
 |--------|--------------|-------|
@@ -236,10 +239,11 @@ If `status` is not `"success"`, log the full response and report to Charles.
 Execute these steps in order:
 
 ```
-1. SEARCH
-   For each Phase 2 source query:
-   - GET http://localhost:8080/search?q=<url-encoded-query>&format=json&language=en
-   - Extract result URLs and titles
+1. SEARCH (auto-seed)
+   For each query in Section 2:
+   - Call web_search tool with the query string
+   - Collect result URLs + titles
+   - Write to memory/b2c-seed-urls.json (overwrite each run)
    - Skip results that are clearly not individual posts/reviews (category pages, homepages)
 
 2. FILTER
