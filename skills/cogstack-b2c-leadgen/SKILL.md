@@ -1,6 +1,6 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.4
+**Version:** 1.5
 **Phase:** 2 (HTTP + SearXNG)
 **Agent:** Hugo (OpenClaw on Pi4)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
@@ -42,10 +42,29 @@ Run each Phase 2 query against SearXNG. Skip Phase 3 sources until browser is un
 | MyBroadband | `site:mybroadband.co.za "car tracker" OR "vehicle tracker" OR "GPS tracker" South Africa` | 2 — ACTIVE |
 | Reddit r/southafrica | `site:reddit.com/r/southafrica tracker OR "vehicle tracking" OR "car theft"` | 2 — ACTIVE |
 | OLX Wanted | `site:olx.co.za wanted tracker OR "GPS tracking"` | 2 — ACTIVE |
-| Gumtree Wanted | `site:gumtree.co.za wanted "car tracker" OR "vehicle tracker" OR "GPS"` | 3 — SKIP (browser only) |
+| Gumtree Wanted | Run `scripts/gumtree_scraper.js` (curl-impersonate, see below) | 2 — ACTIVE |
 | Facebook Groups | `"car tracker" OR "vehicle tracker" site:facebook.com group` | 3 — SKIP (FB auth required) |
 
 **Per source:** Take the top 5–10 results. Filter by qualification criteria before fetching full pages.
+
+### Gumtree — Special Handling (curl-impersonate)
+
+Gumtree blocks headless browsers and standard HTTP clients via TLS fingerprint detection. Use `scripts/gumtree_scraper.js` which fetches via curl-impersonate (Docker) — confirmed working as of 2026-03-15.
+
+```bash
+node scripts/gumtree_scraper.js --max 15
+# Output: memory/gumtree-leads-YYYY-MM-DD.json
+```
+
+**Requires:** `docker pull ghcr.io/lwthiker/curl-impersonate:0.6-chrome-slim-buster` (one-time)
+
+**URL pattern:** Gumtree listing URLs use `/a-{category}/{location}/{title}/{id}` — NOT `/s-ad/`
+
+**Dedup key:** `data-adid` attribute (unique per listing) — fall back to numeric ID in URL
+
+**Phone numbers:** Look for `href="tel:..."`, `data-phone` attribute, then regex `+27`/`0[6-8]x` in description
+
+**Feed the output into the main B2C batch:** merge `gumtree-leads-YYYY-MM-DD.json` with web_search results before enrichment and POST.
 
 ---
 
@@ -287,16 +306,14 @@ Execute these steps in order:
 
 ---
 
-## 10. Phase 3 Preview (Browser Required — Not Yet Active)
+## 10. Phase 3 Preview (Facebook — Not Yet Active)
 
-When the browser tool is unlocked, add these sources:
+| Source | Status | Blocker |
+|--------|--------|---------|
+| Gumtree Wanted ads | **ACTIVE** — curl-impersonate bypass working | ~~TLS fingerprint~~ solved |
+| Facebook Groups | SKIP — Phase 3 | FB auth required |
 
-| Source | Why it's high value |
-|--------|-------------------|
-| Gumtree Wanted ads | Phone numbers visible on listing pages — highest conversion rate |
-| Facebook Groups | Real-time posts from consumers — can catch urgent buyers same day |
-
-Expected uplift: 2–5 phone-verified leads per run. Revisit this section when Hugo graduates to Phase 3.
+Expected uplift from Gumtree: 2–5 phone-verified leads per run (phone numbers visible directly on listing pages).
 
 ---
 
