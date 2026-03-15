@@ -1,8 +1,8 @@
 # Skill: cogstack-b2c-leadgen
 
-**Version:** 1.5
-**Phase:** 2 (HTTP + SearXNG)
-**Agent:** Hugo (OpenClaw on Pi4)
+**Version:** 2.0
+**Phase:** 2 (HTTP + web_search + bigtorig)
+**Agent:** Hugo (OpenClaw on bigtorig — scripts; Pi4 — WhatsApp channel)
 **Pipeline:** B2C Webhook → Notion B2C Leads DB → Claire QA → B2C Call Centre
 
 ---
@@ -15,7 +15,7 @@
 - WhatsApp command: `"Hugo, B2C leads"` or `"Hugo, run B2C lead generation"`
 - HEARTBEAT.md schedule: 2–3× per week (e.g. Mon/Wed/Fri)
 
-**Phase 2 scope:** SearXNG-accessible sources only. No browser tool yet. Gumtree is Phase 3.
+**Phase 2 scope:** `web_search` (Brave API) for discovery. SearXNG is suspended — do not use. Gumtree deferred (JS-rendered listings, needs ScraperAPI). Scripts run on bigtorig (x86_64).
 
 **Goal per run:** 3–10 quality leads. Quality over quantity — Claire reviews every lead, so a bad lead wastes her time.
 
@@ -23,7 +23,7 @@
 
 ## 2. Source Query Templates
 
-Run each Phase 2 query against SearXNG. Skip Phase 3 sources until browser is unlocked.
+Run each active query via the `web_search` tool (Brave API). SearXNG is suspended — skip it entirely.
 
 **Discovery method:** `web_search` tool (Brave API directly). SearXNG (`http://localhost:8080`) is available as fallback only — its engines are currently suspended (CAPTCHA/rate-limited as of 2026-03-14) and should not be relied on.
 
@@ -56,7 +56,7 @@ node scripts/gumtree_scraper.js --max 15
 # Output: memory/gumtree-leads-YYYY-MM-DD.json
 ```
 
-**Requires:** `docker pull ghcr.io/lwthiker/curl-impersonate:0.6-chrome-slim-buster` (one-time)
+**Requires:** `docker pull lwthiker/curl-impersonate:0.6-chrome` (one-time, already pulled on Pi4)
 
 **URL pattern:** Gumtree listing URLs use `/a-{category}/{location}/{title}/{id}` — NOT `/s-ad/`
 

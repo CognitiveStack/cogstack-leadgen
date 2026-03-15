@@ -2,78 +2,107 @@
 
 ## What Is OpenClaw?
 
-OpenClaw is an autonomous AI agent runtime. Think of it as a headless, always-on Claude that can receive messages, use tools, run scheduled tasks (heartbeats), and operate 24/7 without a human sitting at a keyboard. It was recently acquired by OpenAI but remains open source.
+OpenClaw is an autonomous AI agent runtime — a headless, always-on AI that can receive messages, use tools, run scheduled tasks (heartbeats), and operate 24/7 without a human at a keyboard. It was recently acquired by OpenAI but remains open source.
 
-It runs on the **Raspberry Pi 4** on Charles's home LAN, accessible over Tailscale VPN at `pi4.tailfd6deb.ts.net`. The gateway listens on `127.0.0.1:18789` (loopback only) and is exposed securely via Tailscale Serve (HTTPS, automatic cert).
+**Two OpenClaw instances run in the Cogstack infrastructure:**
 
-**Repository:** `CognitiveStack/pi4` (private) — infrastructure and setup docs
-**Agent workspace:** `CognitiveStack/hugo` (private) — Hugo's identity, memory, skills, and config
+| Instance | Host | URL | Purpose |
+|----------|------|-----|---------|
+| **Primary** | bigtorig (x86_64 VPS) | `https://bigtorig.tailfd6deb.ts.net/` | B2C lead gen scripts, Gumtree scraper |
+| **Secondary** | Pi4 (ARM64, home LAN) | `https://pi4.tailfd6deb.ts.net/` | Hugo's WhatsApp channel (+27639842638) |
+
+Both gateways listen on port `18789` and are exposed via Tailscale Serve (HTTPS).
+
+**Repositories:**
+- `CognitiveStack/pi4` (private) — Pi4 infrastructure and setup
+- `CognitiveStack/hugo` (private) — Hugo's identity, memory, skills, config
 
 ---
 
 ## Who Is Hugo?
 
-Hugo is the OpenClaw agent instance. He is the *personality layer* on top of the OpenClaw runtime.
-
-```
-OpenClaw runtime  ←→  Hugo agent workspace (~/.openclaw/workspace/)
-     (engine)               (soul, rules, memory, tools)
-```
+Hugo is the OpenClaw agent personality running across both instances.
 
 | Property | Value |
 |----------|-------|
-| Name | Hugo 😎 |
-| Phone | +27639842638 (MTN SIM, dedicated) |
+| Name | Hugo |
+| Phone | +27639842638 (MTN SIM on Pi4 — WhatsApp primary channel) |
 | Email | hugo@cogstack.co.za |
 | Channel | WhatsApp (primary), responds only to Charles (+27836177469) |
 | Vibe | Casual, sharp, no-nonsense. Skips filler. Has opinions. |
-| Phase | Phase 2 — HTTP + Browser enabled |
+| Phase | Phase 2 — HTTP + Browser + bigtorig migration complete |
 
-Hugo wakes up fresh each session. His continuity comes from markdown files in his workspace:
+Hugo wakes up fresh each session. Continuity comes from markdown files in `~/.openclaw/workspace/`:
 - `SOUL.md` — who he is
 - `USER.md` — who he's helping (Charles)
 - `memory/YYYY-MM-DD.md` — daily logs
-- `MEMORY.md` — curated long-term memory (main session only, never in group chats)
+- `MEMORY.md` — curated long-term memory
 
 ---
 
-## Hugo's Role in Lead Generation
+## Infrastructure State (as of 2026-03-15)
 
-### The Vision
+### bigtorig OpenClaw (Primary for lead gen)
 
-Hugo is the **autonomous scraping brain** for `cogstack-leadgen`. His job is to discover South African individuals and companies that are high-probability vehicle tracking prospects, enrich them with AI-generated analysis, and POST them as structured lead batches to the n8n webhook.
+| Item | Value |
+|------|-------|
+| OS | Ubuntu x86_64 |
+| Node | v22.22.0 (nvm) |
+| Gateway service | `openclaw-gateway.service` — active |
+| Antfarm service | `openclaw-antfarm.service` — active |
+| Gateway port | `0.0.0.0:18789` |
+| Tailscale Serve | `https://bigtorig.tailfd6deb.ts.net/` → `http://localhost:18789` |
+| UI status | Working (allowedOrigins fix applied 2026-03-15) |
+| Docker | Available — `lwthiker/curl-impersonate:0.6-chrome` pulled |
+| B2C workspace | `~/.openclaw/workspace/scripts/` + `skills/` + `memory/` populated |
 
-This is an unconventional approach: instead of writing traditional scraping scripts, the AI *is* the scraper. Hugo reasons about pages, extracts structured data, evaluates prospects, and decides what to send — all autonomously.
+**Gateway fix applied:** Removed invalid `skills.entries.agentmail.AGENTMAIL_API_KEY` key from `openclaw.json` that caused crash-loop. Also added `https://bigtorig.tailfd6deb.ts.net` to `gateway.controlUi.allowedOrigins`.
 
-### Current State (as of 2026-03-14)
+### Pi4 OpenClaw (Secondary — WhatsApp only)
 
-Hugo is in **Phase 2 (HTTP + Browser enabled)**. The B2C skill is live and has completed its first successful run (6 leads created, 1 duplicate skipped).
+| Item | Value |
+|------|-------|
+| OS | Raspberry Pi OS ARM64 |
+| Gateway service | `openclaw-gateway.service` — active |
+| Antfarm service | `openclaw-antfarm.service` — active (Hugo's WhatsApp session) |
+| Tailscale Serve | `https://pi4.tailfd6deb.ts.net/` |
+| Role | WhatsApp channel only — B2C scripts stay on bigtorig |
 
-**Available tools (confirmed):** `read, write, edit, exec, process, web_search, web_fetch, browser, canvas, nodes, cron, message, gateway, agents_list, sessions_list, sessions_history, sessions_send, subagents, session_status, image, memory_search, memory_get, pdf, whatsapp_login, tts`
+---
 
-**HTTP allowlist:**
-- `https://n8n.bigtorig.com/webhook/lead-ingestion-v2` — B2B pipeline
-- `https://n8n.bigtorig.com/webhook/b2c-lead-ingestion` — B2C pipeline
-- `http://localhost:8080` — SearXNG (unreliable — see Known Issues)
-
-**Both B2B and B2C pipelines are live and validated.** Hugo has posted real batches to both webhooks.
-
-### Actual Data Flow (B2C, current)
+## B2C Lead Generation — Current Data Flow
 
 ```
-Hugo (OpenClaw on Pi4)
+Charles triggers via WhatsApp ("Hugo, B2C leads")
     │
-    │  1. web_search tool (Brave API) — discovery queries per source
-    │  2. web_fetch — fetch individual post/review/ad pages
-    │  3. LLM extraction subagent (openrouter/openai/gpt-4o-mini)
-    │     extracts fields + scores (intent_strength, urgency_score)
-    │  4. URL filter — reject news articles, category pages (see SKILL.md)
-    │  5. Composite Score filter — discard if score < 6
-    │  6. POST batch to n8n webhook
-    │  7. Log response + WhatsApp report to Charles
     ▼
-n8n Webhook (https://n8n.bigtorig.com/webhook/b2c-lead-ingestion)
-    │  Authorization: Bearer <B2C_WEBHOOK_TOKEN>
+Hugo antfarm session (Pi4 or bigtorig)
+    │
+    ├─1. web_search (Brave API) — 7 queries across 4 sources
+    │    Hellopeter: /cartrack/reviews, /netstar/reviews,
+    │                /ctrack-sa/reviews, /mix-telematics-africa/reviews
+    │    MyBroadband: /forum/threads/ only
+    │    Reddit: /r/southafrica/comments/ only
+    │    OLX: specific wanted ad URLs
+    │
+    ├─2. URL filter — reject news articles, category pages, non-individual posts
+    │
+    ├─3. web_fetch — fetch each qualifying page
+    │
+    ├─4. LLM enrichment subagent (openrouter/openai/gpt-4o-mini)
+    │    Extracts: name, phone, email, province, city, vehicle
+    │    Scores: intent_strength (0-10), urgency_score (0-10)
+    │    Writes: intent_signal, call_script_opener
+    │    Returns: structured JSON (_meta.llm_used: true)
+    │
+    ├─5. Composite Score filter — discard if (intent×0.6 + urgency×0.4) < 6
+    │
+    ├─6. POST batch to n8n webhook
+    │    POST https://n8n.bigtorig.com/webhook/b2c-lead-ingestion
+    │    Authorization: Bearer <B2C_WEBHOOK_TOKEN>
+    │
+    └─7. WhatsApp report to Charles
+         "B2C run done: X leads created, Y duplicates skipped"
     ▼
 Notion B2C Leads DB → QA Review (Claire) → B2C Call Centre
 ```
@@ -82,158 +111,114 @@ Notion B2C Leads DB → QA Review (Claire) → B2C Call Centre
 
 ## Known Issues & Workarounds
 
-### SearXNG — Mostly Broken (2026-03-14)
+### SearXNG — Suspended (do not use for lead gen)
 
-SearXNG runs at `http://localhost:8080` (Docker on Pi4) but is effectively unusable for lead gen:
+SearXNG runs at `http://localhost:8080` on Pi4 (Docker) but all engines are CAPTCHA'd/rate-limited as of 2026-03-14. **Not used.** Discovery goes via `web_search` tool (Brave API) directly.
 
-| Engine | Status |
+### Gumtree — JS-rendered listings, all free bypass methods exhausted
+
+Gumtree serves a JavaScript shell — actual listings load via XHR after page load. Tested and failed:
+
+| Method | Result |
 |--------|--------|
-| Brave | Suspended: too many requests (rate-limited) |
-| DuckDuckGo | Suspended: CAPTCHA |
-| Startpage | Suspended: CAPTCHA |
-| Yandex | Suspended: CAPTCHA |
+| curl-impersonate (x86_64, bigtorig) | Fetches 98-byte redirect shell, 0 ad links |
+| Playwright + stealth (bigtorig) | Page loads but listings don't render (JS-gated) |
+| Direct HTTP with real UA | Same shell, no listings |
 
-**Workaround:** Hugo now uses the `web_search` tool (Brave API directly) for discovery instead of SearXNG. This bypasses the engine suspension entirely. SearXNG is left running but not used.
+**Root cause:** Listings are loaded dynamically via AJAX. No Gumtree API calls were intercepted during Playwright session — content is likely CDN-edge rendered with bot challenge gate.
 
-### Gumtree — Blocked by Bot Protection
+**Status:** Deferred. Requires paid scraping API (ScraperAPI $49/month or Zyte) to get real listings with phone numbers. This is the only source where SA consumer phone numbers appear directly on the page.
 
-Gumtree blocks both headless Chromium (browser tool) and direct HTTP requests. The block is **PerimeterX / Cloudflare Bot Management** — it fingerprints TLS handshake, request timing, and browser entropy, not just the User-Agent string.
+### Hellopeter — 4 company slugs confirmed working
 
-Hugo's browser tool cannot set the network-level User-Agent header (only in-page JS spoofing, which doesn't help at the edge).
-
-**Current status:** Gumtree is **Phase 3 stretch goal**. Options when we return to it:
-- Playwright + `playwright-stealth` plugin (install via npm on Pi4)
-- Residential proxy (most reliable, adds cost)
-- Manual seed: Charles periodically pastes Gumtree URLs into chat for Hugo to process
-
-**Why Gumtree matters:** It's the only Phase 2-accessible source where phone numbers appear directly on the page. All other sources (Hellopeter, MyBroadband, Reddit, OLX) yield usernames/handles at best.
-
-### Hellopeter — Query Pattern Needs Work
-
-Brave search for Hellopeter tends to return the Cartrack company page, not individual review URLs. Need query patterns that force review-level URLs (e.g. include the review ID pattern in the query).
+These query patterns reliably return individual review URLs via Brave `web_search`:
+- `site:hellopeter.com/cartrack/reviews cartrack`
+- `site:hellopeter.com/netstar/reviews netstar`
+- `site:hellopeter.com/ctrack-sa/reviews ctrack`
+- `site:hellopeter.com/mix-telematics-africa/reviews matrix`
 
 ---
 
-## Model Strategy for Lead Generation
+## Model Strategy
 
-Hugo's model strategy is budget-conscious. Key rule: **never use Claude for routine work, never use direct Anthropic API** (all Claude access goes via OpenRouter).
+Key rule: **never use direct Anthropic API** — all model calls route via OpenRouter.
 
 | Task | Model | Route |
 |------|-------|-------|
-| Daily WhatsApp chat / heartbeats | DeepSeek v3 | OpenRouter |
-| Routine subagent tasks | DeepSeek v3 | OpenRouter |
-| Local fallback (OpenRouter down) | qwen2.5:14b via Ollama (desktop) | Local |
-| **B2C enrichment subagent** | **gpt-4o-mini** | **OpenRouter** |
-| Premium manual tasks | Claude Sonnet 4.6 | OpenRouter |
-
-**Why gpt-4o-mini for enrichment:** Cheapest capable model for structured JSON extraction (~$0.15/$0.60 per M tokens). Excellent at following exact output schemas. No Anthropic credit dependency — routes through OpenRouter.
-
-### Subagent Pattern
-
-```
-Hugo main session (DeepSeek v3)
-    │
-    ├─► web_search for each source query
-    │
-    ├─► web_fetch each candidate URL
-    │
-    └─► Subagent (openrouter/openai/gpt-4o-mini)
-            ├── Reads page text
-            ├── Extracts: name, phone, email, province, city, vehicle
-            ├── Writes intent_signal (verbatim quote)
-            ├── Scores intent_strength + urgency_score (0-10)
-            ├── Writes call_script_opener
-            └── Returns structured JSON (_meta.llm_used: true)
-    │
-    └─► Hugo POSTs enriched batch to n8n webhook
-```
+| Hugo main session / orchestration | DeepSeek v3 | OpenRouter |
+| B2C enrichment subagent | gpt-4o-mini | OpenRouter |
+| Local fallback | qwen2.5:14b (Ollama, desktop) | Local |
+| Premium on-demand | Claude Sonnet 4.6 | OpenRouter |
 
 ---
 
 ## B2C Skill
 
-The B2C lead generation skill is live and version-controlled in this repo.
-
-| Location | Path |
-|----------|------|
+| Item | Value |
+|------|-------|
 | Source of truth | `skills/cogstack-b2c-leadgen/SKILL.md` (this repo) |
-| Deployed to Pi4 | `~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md` |
-| Runner script | `~/.openclaw/workspace/scripts/b2c_run.py` |
+| Deployed — bigtorig | `~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md` |
+| Deployed — Pi4 | `~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md` |
+| Runner script | `~/.openclaw/workspace/scripts/b2c_run.py` (730 lines) |
+| Gumtree scraper | `~/.openclaw/workspace/scripts/gumtree_scraper.js` (deferred) |
 | Run logs | `~/.openclaw/workspace/memory/b2c-run-YYYY-MM-DD.json` |
-| State tracking | `~/.openclaw/workspace/memory/b2c-state.json` |
+| State / dedup | `~/.openclaw/workspace/memory/b2c-state.json` |
+| Current version | 2.0 |
 
-**Current skill version:** 1.2
-
-**Trigger:** WhatsApp `"Hugo, B2C leads"` or HEARTBEAT.md schedule (2-3x/week)
-
-**URL qualification rules (per source):**
-
-| Source | Accept | Reject |
-|--------|--------|--------|
-| MyBroadband | `/forum/threads/…` | `/news/…`, category pages |
-| Reddit | `/r/southafrica/comments/…` | subreddit root, news links |
-| Hellopeter | `/[company]/reviews/[id]` | company root, search results |
-| OLX | specific wanted ad URL | `/ads/…` listing pages |
-
-**Dedup:** keyed on `intent_source_url` — webhook auto-skips duplicates.
-
-**Environment variables on Pi4 (`~/.env`):**
-```bash
-B2C_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/b2c-lead-ingestion
-B2C_WEBHOOK_TOKEN=1951a0fc...  # same token as B2B
-B2C_DATE_AFTER=2026-02-14      # 30-day rolling window
-COGSTACK_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/lead-ingestion-v2
-COGSTACK_WEBHOOK_TOKEN=1951a0fc...
-```
-
-**Deploy command** (from this repo, pre-approved in `.claude/settings.local.json`):
+**Deploy command (from this repo):**
 ```bash
 cp skills/cogstack-b2c-leadgen/SKILL.md /tmp/b2c_skill.md
 scp /tmp/b2c_skill.md pi4:/tmp/b2c_skill.md
+scp /tmp/b2c_skill.md bigtorig:~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md
 ssh pi4 "cp /tmp/b2c_skill.md ~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md"
+```
+
+**Environment variables (both hosts, `~/.env`):**
+```bash
+B2C_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/b2c-lead-ingestion
+B2C_WEBHOOK_TOKEN=1951a0fc...
+B2C_DATE_AFTER=2026-02-14
+OPENROUTER_API_KEY=sk-or-v1-...
+COGSTACK_WEBHOOK_URL=https://n8n.bigtorig.com/webhook/lead-ingestion-v2
+COGSTACK_WEBHOOK_TOKEN=1951a0fc...
 ```
 
 ---
 
 ## Security
 
-Hugo has an 8-layer security model. Relevant to lead gen:
-
-| Layer | Current behaviour |
-|-------|------------------|
+| Layer | Behaviour |
+|-------|-----------|
 | Shell execution | Requires manual approval via OpenClaw dashboard (exec approve button) |
-| Browser tool | Available — Chromium headless. Gumtree/PerimeterX sites still block it |
+| Browser tool | Available on both hosts — headless Chromium |
 | File writes | Limited to `~/.openclaw/workspace/` |
-| WhatsApp allowlist | Charles only can trigger scraping runs |
-| Prompt injection defence | Scraped page content wrapped in `EXTERNAL_UNTRUSTED_CONTENT` block — Hugo correctly ignores instructions in scraped content |
-
-The `EXTERNAL_UNTRUSTED_CONTENT` wrapper is working as intended — Hugo's security notice on scraped content is correct behaviour, not a bug.
+| WhatsApp allowlist | Charles only (+27836177469) |
+| Prompt injection | Scraped content wrapped in `EXTERNAL_UNTRUSTED_CONTENT` — correct behaviour, not a bug |
+| controlUi.allowedOrigins | `https://bigtorig.tailfd6deb.ts.net` added to bigtorig `openclaw.json` |
 
 ---
 
 ## Phase Roadmap
 
 ### Phase 1 (Complete) — Supervisor Mode
-- Hugo exists, WhatsApp connected, heartbeat running
-- No shell/browser/external API access
+Hugo exists, WhatsApp connected, heartbeat running. No external access.
 
-### Phase 2 (Current) — HTTP + Browser enabled
-- `web_search` (Brave API) for discovery — working
-- `web_fetch` for page content — working
-- `browser` tool available — Chromium headless (Gumtree blocked)
-- LLM enrichment subagent (gpt-4o-mini via OpenRouter) — working
-- B2C skill live, first run successful (6 leads, 1 duplicate skipped)
-- Exec approval still required for shell commands (main friction point)
+### Phase 2 (Current) — HTTP + Browser + bigtorig
+- `web_search` (Brave API) discovery — working
+- LLM enrichment (gpt-4o-mini via OpenRouter) — working, `_meta.llm_used: true` confirmed
+- B2C skill v2.0 live on both hosts
+- First successful run: 6 leads created, 1 duplicate skipped
+- bigtorig gateway fixed, UI accessible, B2C workspace deployed
+- Exec approval still required for shell commands
 
-### Phase 3 — Scheduled Autonomy + Gumtree
-- Remove exec approval requirement (graduate SYSTEM.md)
-- Add B2C run to HEARTBEAT.md schedule (2-3x/week)
-- Tackle Gumtree blocking: Playwright stealth or residential proxy
-- Expected uplift: 2-5 phone-verified leads per run
+### Phase 3 — Scheduled Autonomy
+- Add B2C run to HEARTBEAT.md on bigtorig (Mon/Wed/Fri 09:00 SAST)
+- Remove exec approval friction
+- Gumtree via ScraperAPI (paid) — 2-5 phone-verified leads per run
 
 ### Phase 4 — Feedback Loop
-- Claire's QA rejections feed back to Hugo's scoring criteria
-- Hugo tunes itself based on what Claire approves/rejects
+- Claire's QA rejections feed back into Hugo's scoring
+- Auto-approve ≥ 7 composite score, auto-reject < 4
 
 ---
 
@@ -242,13 +227,11 @@ The `EXTERNAL_UNTRUSTED_CONTENT` wrapper is working as intended — Hugo's secur
 | File | Location | Purpose |
 |------|----------|---------|
 | `SYSTEM.md` | `CognitiveStack/hugo` | Hard rules; edit to graduate phases |
-| `SOUL.md` | `CognitiveStack/hugo` | Hugo's character and working style |
-| `HEARTBEAT.md` | `CognitiveStack/hugo` | Scheduled tasks; add B2C lead gen trigger here |
-| `model-strategy.md` | `CognitiveStack/hugo` | Model selection rules and budget |
-| `TOOLS.md` | gateway workspace | Infrastructure cheat sheet + API discovery |
-| `skills/cogstack-b2c-leadgen/SKILL.md` | this repo + Pi4 | B2C lead gen playbook (source of truth here) |
-| `scripts/b2c_run.py` | Pi4 workspace | B2C runner script (LLM enrichment pass active) |
-| `memory/b2c-run-*.json` | Pi4 workspace | Per-run logs |
-| `memory/b2c-state.json` | Pi4 workspace | Run state / submitted URL tracking |
-| `n8n_b2c_code_node.js` | this repo | n8n Code node Hugo POSTs to |
-| `.env` (Pi4) | `~/.env` on Pi4 | Webhook URLs + tokens + date window |
+| `SOUL.md` | `CognitiveStack/hugo` | Hugo's character |
+| `HEARTBEAT.md` | bigtorig `~/.openclaw/workspace/` | Scheduled tasks — add B2C here |
+| `skills/cogstack-b2c-leadgen/SKILL.md` | this repo (source of truth) | B2C lead gen playbook |
+| `scripts/b2c_run.py` | bigtorig + Pi4 workspace | B2C runner (LLM enrichment active) |
+| `scripts/gumtree_scraper.js` | bigtorig + Pi4 workspace | Gumtree scraper (deferred — needs ScraperAPI) |
+| `n8n_b2c_code_node.js` | this repo | n8n webhook Code node |
+| `memory/b2c-state.json` | bigtorig + Pi4 workspace | Submitted URL dedup state |
+| `.agents/plans/migrate-b2c-to-bigtorig.md` | this repo | Migration plan (completed) |
