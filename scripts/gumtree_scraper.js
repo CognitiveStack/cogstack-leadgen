@@ -26,7 +26,7 @@ const outPath = outIdx !== -1 ? args[outIdx + 1]
               : path.join(__dirname, '..', 'memory', `gumtree-leads-${today}.json`);
 
 // ── curl-impersonate fetch ────────────────────────────────────
-const DOCKER_IMAGE = 'ghcr.io/lwthiker/curl-impersonate:0.6-chrome-slim-buster';
+const DOCKER_IMAGE = 'lwthiker/curl-impersonate:0.6-chrome';
 
 function curlFetch(url) {
   try {
