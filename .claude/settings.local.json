@@ -23,7 +23,8 @@
       "Bash(cd ~/.openclaw/workspace && python3 scripts/b2c_run.py 2>&1 | tail -20)",
       "Bash(cat ~/.openclaw/openclaw.json | python3 -c \"\nimport json, sys\nconfig = json.load\\(sys.stdin\\)\ngateway = config.setdefault\\('gateway', {}\\)\ncontrolUi = gateway.setdefault\\('controlUi', {}\\)\norigins = controlUi.setdefault\\('allowedOrigins', []\\)\norigin = 'https://bigtorig.tailfd6deb.ts.net'\nif origin not in origins:\n    origins.append\\(origin\\)\nprint\\(json.dumps\\(config, indent=2\\)\\)\n\" > /tmp/openclaw_origins.json && python3 -m json.tool /tmp/openclaw_origins.json > /dev/null && cp /tmp/openclaw_origins.json ~/.openclaw/openclaw.json && echo \"Done\")",
       "Bash(systemctl --user restart openclaw-gateway.service && sleep 4 && systemctl --user is-active openclaw-gateway.service)",
-      "Bash(cp /opt/projects/cartrack-leadgen/skills/cogstack-b2c-leadgen/SKILL.md /tmp/b2c_skill.md && cp /tmp/b2c_skill.md ~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md && scp /tmp/b2c_skill.md pi4:~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md && echo \"Deployed to bigtorig + Pi4\")"
+      "Bash(cp /opt/projects/cartrack-leadgen/skills/cogstack-b2c-leadgen/SKILL.md /tmp/b2c_skill.md && cp /tmp/b2c_skill.md ~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md && scp /tmp/b2c_skill.md pi4:~/.openclaw/workspace/skills/cogstack-b2c-leadgen/SKILL.md && echo \"Deployed to bigtorig + Pi4\")",
+      "mcp__claude_ai_bigtorig-monitor__read_file"
     ]
   }
 }
