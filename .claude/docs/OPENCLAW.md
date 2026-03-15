@@ -101,8 +101,8 @@ Hugo antfarm session (Pi4 or bigtorig)
     │    POST https://n8n.bigtorig.com/webhook/b2c-lead-ingestion
     │    Authorization: Bearer <B2C_WEBHOOK_TOKEN>
     │
-    └─7. WhatsApp report to Charles
-         "B2C run done: X leads created, Y duplicates skipped"
+    └─7. Telegram notification to Charles (via ocHugo_bot)
+         "✅ B2C run done: X leads created, Y duplicates skipped"
     ▼
 Notion B2C Leads DB → QA Review (Claire) → B2C Call Centre
 ```
@@ -145,10 +145,12 @@ Key rule: **never use direct Anthropic API** — all model calls route via OpenR
 
 | Task | Model | Route |
 |------|-------|-------|
-| Hugo main session / orchestration | DeepSeek v3 | OpenRouter |
+| Hugo main session / orchestration (Pi4 + bigtorig) | gpt-4o-mini | OpenRouter |
 | B2C enrichment subagent | gpt-4o-mini | OpenRouter |
 | Local fallback | qwen2.5:14b (Ollama, desktop) | Local |
 | Premium on-demand | Claude Sonnet 4.6 | OpenRouter |
+
+**Note:** gpt-5.3-codex (code-completion model) is NOT suitable for lead gen — it cannot reliably extract structured data from web content. Use gpt-4o-mini for all lead gen tasks on bigtorig. Update bigtorig's `~/.openclaw/openclaw.json` model field to `openrouter/openai/gpt-4o-mini`.
 
 ---
 

@@ -128,7 +128,7 @@ B2C Composite Score = (Intent Strength × 0.6) + (Urgency Score × 0.4)
 
 ## 5. Subagent Enrichment Instructions
 
-For each qualified candidate URL, spawn a **gpt-4o-mini** subagent via OpenRouter with the following prompt. The main Hugo session (DeepSeek) handles orchestration; gpt-4o-mini does the JSON extraction — cheapest capable model for structured output, routed through OpenRouter (no direct Anthropic dependency).
+For each qualified candidate URL, spawn a **gpt-4o-mini** subagent via OpenRouter with the following prompt. The main Hugo session (gpt-4o-mini) handles orchestration; the same model does JSON extraction — cheapest capable model for structured output, routed through OpenRouter (no direct Anthropic dependency).
 
 **Model:** `openrouter/openai/gpt-4o-mini`
 
@@ -324,7 +324,7 @@ Expected uplift from Gumtree: 2–5 phone-verified leads per run (phone numbers 
 | Webhook URL | `https://n8n.bigtorig.com/webhook/b2c-lead-ingestion` |
 | SearXNG | `http://localhost:8080/search?q=<query>&format=json&language=en` |
 | Enrichment model | `openrouter/openai/gpt-4o-mini` (subagent) |
-| Orchestration model | DeepSeek v3 (main Hugo session) |
+| Orchestration model | `openrouter/openai/gpt-4o-mini` (main session — Pi4 + bigtorig) |
 | Dedup key | `intent_source_url` |
 | Scoring threshold | Composite Score ≥ 6 |
 | Segment value | `"B2C"` (exact, required) |
