@@ -21,6 +21,7 @@ On Linux, run: `tree -L 3 -I 'node_modules|__pycache__|.git|dist|build'`
 ### 2. Read Core Documentation
 
 - Read CLAUDE.md or similar global rules file
+- Read .claude/PRD.md if it exists
 - Read README files at project root and major directories
 - Read any architecture documentation
 
