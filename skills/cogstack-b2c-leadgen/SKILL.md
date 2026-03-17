@@ -47,16 +47,27 @@ Run each active query via the `web_search` tool (Brave API). SearXNG is suspende
 
 **Per source:** Take the top 5–10 results. Filter by qualification criteria before fetching full pages.
 
-### Gumtree — Special Handling (curl-impersonate)
+### Gumtree — Special Handling (Scrapling StealthyFetcher)
 
-Gumtree blocks headless browsers and standard HTTP clients via TLS fingerprint detection. Use `scripts/gumtree_scraper.js` which fetches via curl-impersonate (Docker) — confirmed working as of 2026-03-15.
+Gumtree blocks headless browsers and standard HTTP clients via Cloudflare TLS fingerprint detection and JS-rendered listings. Use `scripts/gumtree_scrapling.py` which uses **Scrapling's StealthyFetcher** (patchright + Cloudflare Turnstile solver) — the replacement for the failed curl-impersonate approach.
 
 ```bash
-node scripts/gumtree_scraper.js --max 15
+uv run python scripts/gumtree_scrapling.py --max 15
 # Output: memory/gumtree-leads-YYYY-MM-DD.json
 ```
 
-**Requires:** `docker pull lwthiker/curl-impersonate:0.6-chrome` (one-time, already pulled on Pi4)
+**One-time setup on bigtorig (already done if scrapling is installed):**
+```bash
+uv pip install "scrapling[fetchers]>=0.4.2"
+uv run scrapling install   # downloads Chromium + patchright (~300MB)
+```
+
+**Validate bypass before a full run:**
+```bash
+uv run test_gumtree_scrapling.py
+# PASS = real listings HTML detected, ad extracted
+# FAIL = try adding a residential proxy (--proxy arg or SCRAPLING_PROXY env var)
+```
 
 **URL pattern:** Gumtree listing URLs use `/a-{category}/{location}/{title}/{id}` — NOT `/s-ad/`
 

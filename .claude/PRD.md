@@ -1,26 +1,30 @@
 # Product Requirements Document
 # Cogstack Lead Generation Pipeline
 
-**Version:** 1.0
-**Date:** 2026-02-19
-**Status:** Active Development — Phase A
-**Project Directory:** `/home/charles/cogstack-leadgen`
+**Version:** 1.1
+**Date:** 2026-03-17
+**Status:** Active Development — Phase 2 (B2C pipeline live; Gumtree blocked)
+**Project Directory:** `/opt/projects/cartrack-leadgen`
 
 ---
 
 ## 1. Executive Summary
 
-Cogstack Lead Generation is an AI-powered B2B lead discovery and qualification pipeline built for a South African vehicle tracking company. The system automates the identification of high-probability fleet operator prospects — businesses likely to need vehicle tracking services — and delivers them to a human QA reviewer via a structured Notion workspace.
+Cogstack Lead Generation is an AI-powered lead discovery and qualification pipeline built for a South African vehicle tracking company (Cartrack reseller). It serves **two parallel pipelines**: B2B (fleet operators) and B2C (individual consumers).
 
-The core value proposition is eliminating the manual effort of prospecting: instead of sales staff cold-searching directories and company registries, an autonomous scraping agent (OpenClaw) continuously discovers candidate companies from public South African data sources (CIPC, eTenders, Yellow Pages, LinkedIn, SAPS Crime Stats, Road Freight Association). Each candidate is scored against a composite model weighted for fleet likelihood and tracking need, then surfaced in a Notion kanban board for a human reviewer (Claire) to approve or reject before leads are handed off to the client's call centre (Paul).
+**B2B:** An autonomous scraping agent (Bigtorig AI Runtime / OpenClaw on bigtorig) discovers candidate fleet companies from public SA data sources (CIPC, eTenders, Yellow Pages, LinkedIn, SAPS Crime Stats, Road Freight Association). Each candidate is scored and surfaced in a Notion kanban for human QA before handoff to the call centre.
 
-**MVP Goal:** Deliver 10 qualified, human-approved leads per month to the client's call centre, with a structured data record for each lead including a prospect summary, fleet assessment, tracking need rationale, and a call script opener.
+**B2C:** Bigtorig AI Runtime discovers individual South Africans with verifiable purchase intent (Hellopeter competitor reviews, MyBroadband forums, Reddit, OLX, Gumtree). Intent signals are scored and enriched via LLM (gpt-4o-mini via OpenRouter), then submitted to a separate Notion B2C Leads DB.
+
+**Current critical blocker:** Gumtree is the only source where consumer phone numbers appear directly on listings, but it is effectively bot-proof (JS-rendered, TLS fingerprint detection, CDN-edge bot challenge). All free bypass methods (curl-impersonate, Playwright+stealth) fail to retrieve actual listings. This is the primary reason B2C lead volume is low. See Section 14 (Risks).
+
+**MVP Goal:** Deliver 10+ qualified, human-approved leads per month across both pipelines to the client's call centre, with a structured data record including prospect summary, intent signal, and a call script opener.
 
 ---
 
 ## 2. Mission
 
-**Mission Statement:** To replace manual B2B prospecting with an intelligent, continuously-running pipeline that surfaces the right companies at the right time — so the client's sales team spends time selling, not searching.
+**Mission Statement:** To replace manual prospecting with an intelligent, continuously-running pipeline that surfaces the right companies and individuals at the right time — so the client's sales team spends time selling, not searching.
 
 ### Core Principles
 
@@ -79,10 +83,14 @@ The core value proposition is eliminating the manual effort of prospecting: inst
 | ✅ Notion Pipeline Kanban view (grouped by Status) | Complete |
 | ✅ Test harness (test_webhook.py with 3 sample leads) | Complete |
 | ✅ Source reference database (6 SA data sources seeded) | Complete |
-| ❌ OpenClaw scraping logic (external — Raspberry Pi 4) | Out of scope for this repo |
+| ✅ B2C pipeline (Hellopeter, MyBroadband, Reddit, OLX) | Live — Phase 2 |
+| ✅ B2C Notion databases (Leads, Batches) | Live |
+| ✅ B2C LLM enrichment (gpt-4o-mini via OpenRouter) | Live — first run 6 leads |
+| ⚠️ Gumtree B2C source (phone numbers) | Blocked — needs ScraperAPI ($49/month) |
+| ❌ OpenClaw scraping logic — B2B (bigtorig) | In progress |
 | ❌ Phase B auto-approval (score ≥ 7) | Deferred |
 | ❌ Phase B auto-rejection (score < 4) | Deferred |
-| ❌ WhatsApp/email notifications on QA approval | Deferred |
+| ❌ Telegram/WhatsApp notifications on QA approval | Deferred |
 | ❌ Fuzzy company name deduplication | Deferred |
 
 ### Technical
@@ -114,11 +122,15 @@ The core value proposition is eliminating the manual effort of prospecting: inst
 
 | Feature | Status |
 |---------|--------|
-| ✅ n8n running on Hostinger (n8n.bigtorig.com) | Complete |
-| ✅ Webhook URL active (lead-ingestion-v2) | Complete |
-| ✅ Notion workspace live with QA reviewer access | Complete |
-| ❌ OpenClaw production webhook configured | Pending |
+| ✅ n8n running on bigtorig (n8n.bigtorig.com) | Complete |
+| ✅ B2B webhook active (lead-ingestion-v2) | Complete |
+| ✅ B2C webhook active (b2c-lead-ingestion) | Complete |
+| ✅ Notion workspace live (B2B + B2C databases) | Complete |
+| ✅ Bigtorig AI Runtime / OpenClaw running on bigtorig (x86_64) | Complete — gateway fixed 2026-03-15 |
+| ✅ B2C first run completed (6 leads, 1 duplicate) | Complete |
+| ❌ B2B OpenClaw production scraping configured | Pending |
 | ❌ Claire/Paul invited to Notion workspace | Pending |
+| ❌ Gumtree via ScraperAPI | Pending — cost decision required |
 
 ---
 
@@ -163,14 +175,17 @@ The core value proposition is eliminating the manual effort of prospecting: inst
 ### Architecture Overview
 
 ```
-OpenClaw (Raspberry Pi 4, Tailscale VPN)
+Bigtorig AI Runtime / OpenClaw (bigtorig x86_64 VPS, Tailscale)
+    │                           ↑
+    │                    Pi4 (ARM64) — Hugo agent, WhatsApp channel only
     │
-    │  POST /webhook/lead-ingestion-v2
+    │  POST /webhook/lead-ingestion-v2  (B2B)
+    │  POST /webhook/b2c-lead-ingestion (B2C)
     │  Authorization: Bearer <token>
     │  Content-Type: application/json
-    │  Body: { batch_id, source, leads[] }
+    │  Body: { batch_id, [segment: "B2C"], leads[] }
     ▼
-n8n (Hostinger, n8n.bigtorig.com)
+n8n (bigtorig, n8n.bigtorig.com)
     │  Webhook Trigger Node
     │  ↓
     │  Code Node (n8n_code_node.js)
@@ -192,9 +207,11 @@ Notion API (api.notion.com, v2022-06-28)
     │     Batch ID, Run Date, Status, Leads Received,
     │     Leads Created, Duplicates, Errors, Error Log
     │
-    └── Sources DB (30b89024-cd3d-81b1-ab3a-c900965b5d64)
-          Name, Type, URL, Coverage, Reliability,
-          Last Scraped, Notes
+    ├── Sources DB (30b89024-cd3d-81b1-ab3a-c900965b5d64)
+    │     Name, Type, URL, Coverage, Reliability, Last Scraped, Notes
+    │
+    ├── B2C Leads DB — consumer schema (phone, email, intent signal, dispute tracking)
+    └── B2C Batches DB — one record per B2C ingestion run
     ▼
 Notion UI (QA Review)
     │
@@ -661,14 +678,32 @@ The MVP is successful when: 10 qualified leads per month are consistently delive
 
 ## 14. Risks & Mitigations
 
-### Risk 1: Data Source Access Degradation
-**Description:** Public data sources (CIPC, Yellow Pages, LinkedIn) change their HTML structure or add bot detection, breaking OpenClaw's scrapers.
+### Risk 1: Data Source Access Degradation / Bot Blocking
+**Description:** Public data sources add bot detection, breaking scrapers. **This risk has already materialised for Gumtree** — the only B2C source with phone numbers directly on listings.
 **Likelihood:** High (ongoing maintenance burden)
-**Mitigation:**
-- Monitor Batches DB for batches with 0 leads created from a specific source
-- Design OpenClaw scrapers as modular source adapters; one broken source doesn't stop the pipeline
+
+**Gumtree — CONFIRMED BLOCKED (as of 2026-03-15):**
+
+| Method tried | Result |
+|---|---|
+| curl-impersonate (x86_64, bigtorig) | Returns 98-byte JS shell — no listings |
+| Playwright + stealth | Listings don't render (JS-gated, CDN challenge) |
+| Direct HTTP with real UA | Same JS shell |
+
+Root cause: Listings loaded via AJAX behind a bot challenge gate. No Notion API XHR intercepted during Playwright session. **Resolution requires a paid scraping API (ScraperAPI ~$49/month or Zyte).** This is a cost decision for Charles.
+
+**Impact:** Without Gumtree, B2C leads have no directly-visible phone numbers. All other sources (Hellopeter, MyBroadband, Reddit, OLX) require agents to call back via name/intent context — lower contact rate.
+
+**Mitigation (general):**
+- Monitor Batches DB for batches with 0 leads from a specific source
+- Design scrapers as modular source adapters; one broken source doesn't stop the pipeline
 - Maintain a fallback list of alternative data sources (eTenders and RFA are more stable than LinkedIn)
 - Track `Last Scraped` and `Reliability` in Sources DB; alert when reliability drops
+
+**Mitigation (Gumtree specifically):**
+- Short-term: increase volume from working sources (more Hellopeter queries, OLX categories)
+- Medium-term: evaluate ScraperAPI trial ($49/month) — confirm it bypasses Gumtree's bot gate before committing
+- Alternative: Facebook Marketplace Wanted ads (similar intent signal, phone sometimes visible) — requires Facebook auth
 
 ### Risk 2: Scoring Model Produces Low-Quality Leads
 **Description:** OpenClaw's composite scoring incorrectly surfaces non-fleet companies as high-priority leads, wasting Claire's QA time and reducing client trust.
@@ -729,10 +764,12 @@ The MVP is successful when: 10 qualified leads per month are consistently delive
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| n8n | https://n8n.bigtorig.com | Hostinger, Docker, behind Caddy |
-| Webhook v2 | https://n8n.bigtorig.com/webhook/lead-ingestion-v2 | Active endpoint |
+| n8n | https://n8n.bigtorig.com | bigtorig VPS, Docker, behind Caddy |
+| B2B Webhook | https://n8n.bigtorig.com/webhook/lead-ingestion-v2 | Active |
+| B2C Webhook | https://n8n.bigtorig.com/webhook/b2c-lead-ingestion | Active |
 | Notion API | https://api.notion.com/v1 | v2022-06-28 |
-| OpenClaw | Raspberry Pi 4 (Tailscale) | External; not in this repo |
+| Bigtorig AI Runtime / OpenClaw | bigtorig x86_64 VPS (Tailscale) | B2C lead gen scripts |
+| Hugo / OpenClaw | Pi4 ARM64 (Tailscale) | WhatsApp channel only (+27639842638) |
 
 ### D. Immediate Next Steps (As of 2026-02-19)
 
