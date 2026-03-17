@@ -38,13 +38,28 @@ load_dotenv()
 
 # NOTE: Gumtree removed the "Wanted Ads" top-level category (c9110) in 2025/2026.
 # All /s-wanted-ads/... paths now 301-redirect to /s-all-the-ads/v1b0p1 (losing the keyword).
-# The current working pattern is keyword search via ?q= on /s-all-the-ads/v1b0p1.
-# Results are mixed offer+wanted ads — the B2C enrichment agent filters buyer-intent
-# ads by title/description when scoring intent_strength and urgency_score.
+# Use buyer-intent keyword phrases (?q=) to surface people looking to BUY a tracker.
+# Category-level blocklist in extract_ad_links() further filters seller/job/car ads by URL.
 SEARCH_URLS = [
-    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=car+tracker",
-    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=vehicle+tracker",
-    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=gps+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=need+car+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=want+car+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=car+tracker+wanted",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=looking+for+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=gps+tracker+needed",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=vehicle+tracker+wanted",
+]
+
+# Gumtree URL path segments for categories that never produce buyer-intent tracker leads.
+# Checked at link-extraction time to skip irrelevant ads before fetching their pages.
+_BLOCKED_CATEGORIES = [
+    "/a-cars-bakkies/",
+    "/a-engineering-architecture-jobs/",
+    "/a-call-centre-jobs/",
+    "/a-other-jobs/",
+    "/a-removals-storage/",
+    "/a-other-replacement-car-part/",
+    "/a-property-",
+    "/a-services/",
 ]
 
 BLOCK_SIGNALS = ["The request is blocked", "Access Denied", "cf-challenge"]
@@ -96,6 +111,8 @@ def extract_ad_links(page) -> list[str]:
         if "/s-user/" in href or "/s-my-gumtree/" in href:
             continue
         if not href.startswith(GUMTREE_BASE):
+            continue
+        if any(cat in href for cat in _BLOCKED_CATEGORIES):
             continue
         if href not in seen:
             seen.add(href)
