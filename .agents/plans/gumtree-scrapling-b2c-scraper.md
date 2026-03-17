@@ -440,6 +440,28 @@ If `StealthyFetcher` cannot bypass Gumtree's bot gate (possible if bigtorig's da
 
 If running in a fresh Docker container on bigtorig: `pyd4vinci/scrapling:latest` includes all browsers and deps. May be simpler than running `scrapling install` in a fresh environment.
 
+### Claire's Lead Delivery API (Production Endpoint)
+
+Claire has provided a direct API endpoint to receive **production-ready leads** from the B2C pipeline. This is the downstream destination after QA approval — leads go here instead of (or in addition to) Notion handoff to the call centre.
+
+| Field | Value |
+|---|---|
+| Campaign Name | `B2C - 9PointPlanWA` |
+| Lead Campaign UID | `af7b2cbb-29a4-446b-b4fd-0199a060d9ad` |
+| Instance UID | `793c83c2-f829-464c-ad82-a157cf85bf34` |
+| API Token | stored in `.env` as `CLAIRE_LEAD_API_TOKEN` — **do not commit** |
+
+**Store the token in `.env`:**
+```bash
+CLAIRE_LEAD_API_TOKEN=<token from Claire — do not commit>
+CLAIRE_CAMPAIGN_UID=af7b2cbb-29a4-446b-b4fd-0199a060d9ad
+CLAIRE_INSTANCE_UID=793c83c2-f829-464c-ad82-a157cf85bf34
+```
+
+**Integration note:** The API endpoint and payload format are not yet documented here — confirm with Claire the exact POST URL, request schema, and required lead fields before implementing the delivery step. This is a **Phase 3 task** (after Gumtree scraping is validated end-to-end). The current pipeline stores leads in Notion for QA; this API becomes the handoff after QA approval.
+
+**Next step:** Ask Claire for the API base URL and request/response schema so the delivery integration can be planned.
+
 ### Output path note
 
 In this repo, the default output path is `scripts/../memory/gumtree-leads-YYYY-MM-DD.json` (i.e., `memory/` directory at repo root). On bigtorig's workspace, `b2c_run.py` expects `memory/gumtree-leads-YYYY-MM-DD.json` relative to `~/.openclaw/workspace/`. When deploying, make sure the script is run from `~/.openclaw/workspace/` so the relative path resolves correctly, or pass `--out ~/.openclaw/workspace/memory/gumtree-leads-YYYY-MM-DD.json` explicitly.
