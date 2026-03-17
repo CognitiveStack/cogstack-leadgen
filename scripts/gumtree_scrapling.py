@@ -26,6 +26,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Gumtree-owned numbers injected site-wide (WhatsApp button, support links).
+# These appear in the rendered DOM on every ad page — not seller phones.
+_GUMTREE_NUMBERS = {"+27756035177", "27756035177", "0870220222", "+27870220222"}
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -129,57 +133,113 @@ def is_blocked(page) -> bool:
     return False
 
 
+def _extract_location_from_jsonld(body_text: str) -> str | None:
+    """
+    Parse JSON-LD Place schema embedded in page HTML.
+    Gumtree encodes location as addressLocality + addressRegion.
+    Returns e.g. "Cape Town" or "Johannesburg, Gauteng".
+    """
+    for m in re.finditer(
+        r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+        body_text,
+        re.DOTALL,
+    ):
+        try:
+            data = json.loads(m.group(1))
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if item.get("@type") == "Place":
+                    addr = item.get("address", {})
+                    locality = addr.get("addressLocality", "")
+                    region = addr.get("addressRegion", "")
+                    # "Other" is Gumtree's placeholder when locality is unknown
+                    parts = [p for p in [locality, region] if p and p.lower() != "other"]
+                    if parts:
+                        return ", ".join(parts)
+        except Exception:
+            pass
+    return None
+
+
 def parse_ad_page(page, url: str) -> dict | None:
     """Extract lead fields from an individual Gumtree ad page."""
     if is_blocked(page):
         print(f"[gumtree] block page detected: {url}", file=sys.stderr)
         return None
 
+    # Get raw body once — reused for JSON-LD, phone scan, etc.
+    try:
+        body_text = page.body.decode("utf-8", errors="ignore") if isinstance(page.body, bytes) else str(page.body)
+    except Exception:
+        body_text = ""
+
     # Title
     title = page.css("h1::text").get()
     if title:
         title = title.strip()
 
-    # Description — try data-q attribute first, then class-based fallback
-    description = page.css('[data-q="ad-description"]::text').get()
+    # Description
+    # Gumtree changed HTML structure in 2025/2026 — no more data-q attributes.
+    # Try multiple selectors with *::text (captures nested <p>/<span> content).
+    # Fall back to <meta name="description"> which is always present (truncated ~150 chars).
+    description = None
+    for sel in [
+        '[data-q="ad-description"] *::text',
+        ".description *::text",
+        ".vip-ad-description *::text",
+        ".ad-description *::text",
+    ]:
+        parts = page.css(sel).getall()
+        if parts:
+            description = " ".join(t.strip() for t in parts if t.strip())
+            if description:
+                break
     if not description:
-        description = page.css(".description::text").get()
-    if description:
-        description = description.strip()
+        description = page.css('meta[name="description"]::attr(content)').get()
+        if description:
+            description = description.strip()
 
-    # Location
-    location = page.css('[data-q="ad-location"]::text').get()
+    # Location — JSON-LD Place schema is the most reliable source on current Gumtree
+    location = _extract_location_from_jsonld(body_text)
     if not location:
-        location = page.css(".location::text").get()
-    if location:
-        location = location.strip()
+        for sel in ['[data-q="ad-location"]::text', ".location::text"]:
+            loc = page.css(sel).get()
+            if loc and loc.strip() and loc.strip() != ",":
+                location = loc.strip()
+                break
 
     # Price
-    price = page.css('[data-q="ad-price"]::text').get()
-    if not price:
-        price = page.css(".price::text").get()
-    if price:
-        price = price.strip()
+    price = None
+    for sel in ['[data-q="ad-price"]::text', ".price::text"]:
+        price = page.css(sel).get()
+        if price and price.strip():
+            price = price.strip()
+            break
 
-    # Phone — priority: tel: link > data-phone attr > regex in description > regex in body
+    # Phone
+    # Priority: rendered tel: links (filtered) > data-phone > regex in description > body scan
+    # NOTE: Gumtree injects its own numbers (+27756035177, 0870220222) into every page
+    # via JS-rendered DOM elements. Skip these — they are not seller phones.
     phone = None
-    tel_href = page.css('a[href^="tel:"]::attr(href)').get()
-    if tel_href:
-        phone = tel_href.replace("tel:", "").strip()
-        phone = re.sub(r"[\s\-]", "", phone)
+    for tel_href in page.css('a[href^="tel:"]::attr(href)').getall():
+        candidate = re.sub(r"[\s\-]", "", tel_href.replace("tel:", "").strip())
+        if candidate not in _GUMTREE_NUMBERS:
+            phone = candidate
+            if phone.startswith("0"):
+                phone = "+27" + phone[1:]
+            elif phone.startswith("27") and not phone.startswith("+"):
+                phone = "+" + phone
+            break
     if not phone:
         data_phone = page.css("[data-phone]::attr(data-phone)").get()
         if data_phone:
             phone = re.sub(r"[\s\-]", "", data_phone.strip())
     if not phone:
         phone = extract_phone(description)
-    if not phone:
-        # Scan top 5000 chars of body as last resort
-        try:
-            body_text = page.body.decode("utf-8", errors="ignore") if isinstance(page.body, bytes) else str(page.body)
-            phone = extract_phone(body_text[:5000])
-        except Exception:
-            pass
+    if not phone and body_text:
+        # Seller phone is typically in description text at ~100K chars into the body.
+        # Scan up to 200K to capture it; avoid the related-ads section (~120K+).
+        phone = extract_phone(body_text[5000:200000])
 
     # AdID
     adid = extract_adid(page, url)
