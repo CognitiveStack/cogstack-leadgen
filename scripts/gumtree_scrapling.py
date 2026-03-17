@@ -32,10 +32,15 @@ load_dotenv()
 
 # ── Constants ─────────────────────────────────────────────────
 
+# NOTE: Gumtree removed the "Wanted Ads" top-level category (c9110) in 2025/2026.
+# All /s-wanted-ads/... paths now 301-redirect to /s-all-the-ads/v1b0p1 (losing the keyword).
+# The current working pattern is keyword search via ?q= on /s-all-the-ads/v1b0p1.
+# Results are mixed offer+wanted ads — the B2C enrichment agent filters buyer-intent
+# ads by title/description when scoring intent_strength and urgency_score.
 SEARCH_URLS = [
-    "https://www.gumtree.co.za/s-wanted-ads/car-tracker/v1c9110l0p1",
-    "https://www.gumtree.co.za/s-wanted-ads/vehicle-tracker/v1c9110l0p1",
-    "https://www.gumtree.co.za/s-wanted-ads/gps-tracker/v1c9110l0p1",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=car+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=vehicle+tracker",
+    "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=gps+tracker",
 ]
 
 BLOCK_SIGNALS = ["The request is blocked", "Access Denied", "cf-challenge"]

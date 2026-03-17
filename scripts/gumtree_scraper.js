@@ -57,12 +57,15 @@ function extractPhone(text) {
 
 function extractAdLinks(html) {
   // Gumtree listing URLs: /a-{category}/{location}/{title}/{id}
-  // Also match /s-user/ seller pages (skip) — only keep /a- pattern
-  const re = /href="(https?:\/\/www\.gumtree\.co\.za\/a-[^"]+)"/g;
+  // Current Gumtree search results (2026) use relative /a- hrefs, not absolute URLs.
+  // Match both absolute (https://www.gumtree.co.za/a-...) and relative (/a-...) forms.
+  const re = /href="((?:https?:\/\/www\.gumtree\.co\.za)?\/a-[^"]+)"/g;
+  const BASE = 'https://www.gumtree.co.za';
   const links = new Set();
   let m;
   while ((m = re.exec(html)) !== null) {
-    const url = m[1].split('?')[0]; // strip query params
+    let url = m[1].split('?')[0]; // strip query params
+    if (!url.startsWith('http')) url = BASE + url; // make absolute
     if (!url.includes('/s-user/') && !url.includes('/s-my-gumtree/')) {
       links.add(url);
     }
@@ -131,10 +134,14 @@ function parseAdPage(html, url) {
 }
 
 // ── Search URLs ───────────────────────────────────────────────
+// NOTE: Gumtree removed the "Wanted Ads" top-level category (c9110) in 2025/2026.
+// All /s-wanted-ads/... paths now 301-redirect to /s-all-the-ads/v1b0p1 (losing the keyword).
+// The new working pattern is keyword search via ?q= on /s-all-the-ads/v1b0p1.
+// Results are mixed offer+wanted ads — filter buyer-intent ads by title/description in the agent.
 const SEARCH_URLS = [
-  'https://www.gumtree.co.za/s-wanted-ads/car-tracker/v1c9110l0p1',
-  'https://www.gumtree.co.za/s-wanted-ads/vehicle-tracker/v1c9110l0p1',
-  'https://www.gumtree.co.za/s-wanted-ads/gps-tracker/v1c9110l0p1',
+  'https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=car+tracker',
+  'https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=vehicle+tracker',
+  'https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=gps+tracker',
 ];
 
 // ── Main ──────────────────────────────────────────────────────
