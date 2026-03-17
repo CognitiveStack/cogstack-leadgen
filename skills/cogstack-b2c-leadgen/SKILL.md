@@ -42,7 +42,7 @@ Run each active query via the `web_search` tool (Brave API). SearXNG is suspende
 | MyBroadband | `site:mybroadband.co.za "car tracker" OR "vehicle tracker" OR "GPS tracker" South Africa` | 2 — ACTIVE |
 | Reddit r/southafrica | `site:reddit.com/r/southafrica tracker OR "vehicle tracking" OR "car theft"` | 2 — ACTIVE |
 | OLX Wanted | `site:olx.co.za wanted tracker OR "GPS tracking"` | 2 — ACTIVE |
-| Gumtree Wanted | Run `scripts/gumtree_scraper.js` (curl-impersonate, see below) | 2 — ACTIVE |
+| Gumtree Wanted | Run `scripts/gumtree_scrapling.py` (Scrapling StealthyFetcher, see below) | 2 — ACTIVE |
 | Facebook Groups | `"car tracker" OR "vehicle tracker" site:facebook.com group` | 3 — SKIP (FB auth required) |
 
 **Per source:** Take the top 5–10 results. Filter by qualification criteria before fetching full pages.
@@ -321,7 +321,7 @@ Execute these steps in order:
 
 | Source | Status | Blocker |
 |--------|--------|---------|
-| Gumtree Wanted ads | **ACTIVE** — curl-impersonate bypass working | ~~TLS fingerprint~~ solved |
+| Gumtree Wanted ads | **ACTIVE** — Scrapling StealthyFetcher bypass working | ~~TLS fingerprint~~ solved via patchright |
 | Facebook Groups | SKIP — Phase 3 | FB auth required |
 
 Expected uplift from Gumtree: 2–5 phone-verified leads per run (phone numbers visible directly on listing pages).
