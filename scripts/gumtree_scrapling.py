@@ -51,15 +51,31 @@ SEARCH_URLS = [
 
 # Gumtree URL path segments for categories that never produce buyer-intent tracker leads.
 # Checked at link-extraction time to skip irrelevant ads before fetching their pages.
+# Rule: any URL segment containing "-jobs/" is a job ad — blocked in extract_ad_links().
 _BLOCKED_CATEGORIES = [
+    # Cars/vehicles for sale (sellers, not tracker buyers)
     "/a-cars-bakkies/",
-    "/a-engineering-architecture-jobs/",
-    "/a-call-centre-jobs/",
-    "/a-other-jobs/",
-    "/a-removals-storage/",
+    "/a-heavy-trucks-buses/",
     "/a-other-replacement-car-part/",
+    "/a-car-interior-accessories/",
+    "/a-accessories-styling/",
+    "/a-auto-electrical-parts/",
+    # Electronics sellers (GPS/tracker sellers, not buyers)
+    "/a-electronics-it-services/",
+    "/a-wearable-technology/",
+    # Pets
+    "/a-other-pets/",
+    # Removals/property/services
+    "/a-removals-storage/",
     "/a-property-",
-    "/a-services/",
+    "/a-other-services/",
+    "/a-legal-services/",
+    # Business-to-business
+    "/a-other-business",
+    "/a-business+to+business",
+    # Recruitment / job listings
+    "/a-recruitment-services/",
+    "/a-other-jobs/",
 ]
 
 BLOCK_SIGNALS = ["The request is blocked", "Access Denied", "cf-challenge"]
@@ -113,6 +129,9 @@ def extract_ad_links(page) -> list[str]:
         if not href.startswith(GUMTREE_BASE):
             continue
         if any(cat in href for cat in _BLOCKED_CATEGORIES):
+            continue
+        # Block all job listing categories (catches *-jobs/ patterns generically)
+        if "-jobs/" in href:
             continue
         if href not in seen:
             seen.add(href)
