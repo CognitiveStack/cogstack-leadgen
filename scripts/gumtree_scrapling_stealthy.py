@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 # =============================================================
-# gumtree_scrapling.py — Gumtree ads scraper
-# Uses Scrapling Fetcher (curl_cffi with browser TLS fingerprint)
-# — no Chromium needed. ~1s per page vs ~90s with StealthySession.
-#
-# Fallback: gumtree_scrapling_stealthy.py uses StealthySession
-# with full Chromium + Cloudflare solver if Gumtree ever adds
-# interactive challenges.
+# gumtree_scrapling.py — Gumtree Wanted ads scraper
+# Uses Scrapling StealthyFetcher (patchright + Cloudflare solver)
+# to bypass bot protection that defeated curl-impersonate and
+# vanilla Playwright+stealth.
 # =============================================================
 # Usage:
 #   uv run python scripts/gumtree_scrapling.py
 #   uv run python scripts/gumtree_scrapling.py --max 20 --out /tmp/gumtree.json
 #
-# Requires:
+# Requires (one-time setup on bigtorig):
 #   uv pip install "scrapling[fetchers]>=0.4.2"
+#   uv run scrapling install   # downloads Chromium + patchright binaries (~300MB)
 #
 # Output JSON per lead: { title, description, phone, location, price, adid, url, scraped_at }
 # Drop-in replacement for gumtree_scraper.js — same schema, same CLI flags.
@@ -319,11 +317,12 @@ def main() -> None:
 
     # Lazy import so the error message is helpful if scrapling isn't installed
     try:
-        from scrapling.fetchers import Fetcher
+        from scrapling.fetchers import StealthySession
     except ImportError:
         print(
             "[gumtree] ERROR: scrapling not installed.\n"
-            "  Run: uv pip install 'scrapling[fetchers]>=0.4.2'",
+            "  Run: uv pip install 'scrapling[fetchers]>=0.4.2'\n"
+            "  Then: uv run scrapling install",
             file=sys.stderr,
         )
         print(json.dumps({"ok": False, "error": "scrapling not installed"}))
@@ -333,65 +332,83 @@ def main() -> None:
     seen_urls: set[str] = set()
     seen_adids: set[str] = set()
 
-    for search_url in SEARCH_URLS:
-        if len(results) >= max_ads:
-            break
+    try:
+        with StealthySession(
+            headless=True,
+            solve_cloudflare=True,
+            network_idle=True,
+            block_webrtc=True,
+            hide_canvas=True,
+            timeout=90000,
+            retries=3,
+        ) as session:
+            for search_url in SEARCH_URLS:
+                if len(results) >= max_ads:
+                    break
 
-        print(f"[gumtree] Fetching listing: {search_url}", file=sys.stderr)
+                print(f"[gumtree] Fetching listing: {search_url}", file=sys.stderr)
 
-        try:
-            listing_page = Fetcher.get(
-                search_url, stealthy_headers=True, retries=3, timeout=30,
-            )
-        except Exception as e:
-            print(f"[gumtree] FAILED listing page: {e}", file=sys.stderr)
-            continue
+                try:
+                    # Don't disable_resources on listing page — AJAX links need to load
+                    listing_page = session.fetch(search_url, network_idle=True)
+                except RuntimeError as e:
+                    print(f"[gumtree] BLOCKED — Scrapling could not load listing page: {e}", file=sys.stderr)
+                    continue
 
-        if is_blocked(listing_page):
-            print(f"[gumtree] BLOCKED on listing page", file=sys.stderr)
-            continue
+                if is_blocked(listing_page):
+                    print(f"[gumtree] BLOCKED on listing page — Cloudflare not bypassed", file=sys.stderr)
+                    continue
 
-        ad_links = extract_ad_links(listing_page)
-        print(f"[gumtree] Found {len(ad_links)} ad links", file=sys.stderr)
+                ad_links = extract_ad_links(listing_page)
+                print(f"[gumtree] Found {len(ad_links)} ad links", file=sys.stderr)
 
-        if not ad_links:
-            print(f"[gumtree] Found 0 ad links on {search_url}", file=sys.stderr)
-            continue
+                if not ad_links:
+                    print(f"[gumtree] Found 0 ad links on {search_url}", file=sys.stderr)
+                    continue
 
-        for ad_url in ad_links:
-            if len(results) >= max_ads:
-                break
-            if ad_url in seen_urls:
-                continue
-            seen_urls.add(ad_url)
+                for ad_url in ad_links:
+                    if len(results) >= max_ads:
+                        break
+                    if ad_url in seen_urls:
+                        continue
+                    seen_urls.add(ad_url)
 
-            # Polite delay: 500–1200ms jitter
-            time.sleep(0.5 + random.random() * 0.7)
+                    # Polite delay: 800–2000ms jitter (mirrors gumtree_scraper.js)
+                    time.sleep(0.8 + random.random() * 1.2)
 
-            print(f"[gumtree] Fetching ad: {ad_url}", file=sys.stderr)
+                    print(f"[gumtree] Fetching ad: {ad_url}", file=sys.stderr)
 
-            try:
-                ad_page = Fetcher.get(
-                    ad_url, stealthy_headers=True, retries=3, timeout=30,
-                )
-            except Exception as e:
-                print(f"[gumtree] fetch failed for {ad_url}: {e}", file=sys.stderr)
-                continue
+                    try:
+                        ad_page = session.fetch(
+                            ad_url,
+                            network_idle=True,
+                            disable_resources=True,  # safe on individual ad pages
+                        )
+                    except RuntimeError as e:
+                        print(f"[gumtree] fetch failed for {ad_url}: {e}", file=sys.stderr)
+                        continue
 
-            ad = parse_ad_page(ad_page, ad_url)
-            if not ad:
-                continue
+                    ad = parse_ad_page(ad_page, ad_url)
+                    if not ad:
+                        continue
 
-            if ad["adid"] and ad["adid"] in seen_adids:
-                continue
-            if ad["adid"]:
-                seen_adids.add(ad["adid"])
+                    if ad["adid"] and ad["adid"] in seen_adids:
+                        continue
+                    if ad["adid"]:
+                        seen_adids.add(ad["adid"])
 
-            results.append(ad)
-            print(
-                f"[gumtree] ✓ \"{ad['title']}\" | phone: {ad['phone'] or 'none'} | loc: {ad['location'] or '?'}",
-                file=sys.stderr,
-            )
+                    results.append(ad)
+                    print(
+                        f"[gumtree] ✓ \"{ad['title']}\" | phone: {ad['phone'] or 'none'} | loc: {ad['location'] or '?'}",
+                        file=sys.stderr,
+                    )
+
+    except RuntimeError as e:
+        err = str(e)
+        print(f"[gumtree] BLOCKED — Scrapling could not solve Cloudflare challenge: {err}", file=sys.stderr)
+        print(f"[gumtree] Tip: if bigtorig IP is flagged, add a residential proxy via --proxy or env SCRAPLING_PROXY", file=sys.stderr)
+        print(json.dumps({"ok": False, "error": err, "count": len(results), "leads": results}))
+        sys.exit(1)
 
     # Write output file
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
