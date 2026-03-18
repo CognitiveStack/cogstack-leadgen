@@ -10,6 +10,7 @@
 #   uv run python scripts/gumtree_to_b2c.py --input memory/gumtree-leads-2026-03-17.json
 #   uv run python scripts/gumtree_to_b2c.py --dry-run
 #   uv run python scripts/gumtree_to_b2c.py --skip-llm
+#   uv run python scripts/gumtree_to_b2c.py --whatsapp          # enrich names via WhatsApp lookup service
 # =============================================================
 
 import argparse
@@ -33,6 +34,7 @@ B2C_WEBHOOK_URL = os.environ.get("B2C_WEBHOOK_URL")
 B2C_WEBHOOK_TOKEN = os.environ.get("B2C_WEBHOOK_TOKEN") or os.environ.get("WEBHOOK_TOKEN")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+WHATSAPP_LOOKUP_URL = os.environ.get("WHATSAPP_LOOKUP_URL", "http://127.0.0.1:3456")
 
 # ── Pre-filter keyword lists ─────────────────────────────────
 
@@ -104,6 +106,28 @@ def infer_province(location: str | None) -> str | None:
     for key, province in LOCATION_TO_PROVINCE.items():
         if key in loc_lower:
             return province
+    return None
+
+
+# ── WhatsApp name lookup ─────────────────────────────────────
+
+def whatsapp_lookup(phone: str) -> str | None:
+    """Look up WhatsApp profile name for a phone number.
+
+    Requires the lookup service at /opt/projects/whatsapp-lookup to be running.
+    Returns the profile name or None if not found / service unavailable.
+    """
+    try:
+        resp = httpx.post(
+            f"{WHATSAPP_LOOKUP_URL}/lookup",
+            json={"phone": phone},
+            timeout=15.0,
+        )
+        data = resp.json()
+        if data.get("exists") and data.get("name"):
+            return data["name"]
+    except (httpx.HTTPError, httpx.TimeoutException):
+        pass
     return None
 
 
@@ -313,6 +337,10 @@ def parse_args() -> argparse.Namespace:
         "--skip-llm", action="store_true",
         help="Apply pre-filter only, no LLM classification"
     )
+    parser.add_argument(
+        "--whatsapp", action="store_true",
+        help="Enrich leads with WhatsApp profile names (requires lookup service running)"
+    )
     return parser.parse_args()
 
 
@@ -393,6 +421,16 @@ def main() -> None:
                 print(f"  [~] BUYER but composite {composite:.1f} < 5 — skipped", file=sys.stderr)
             else:
                 lead = gumtree_ad_to_lead(ad, enrichment)
+
+                # WhatsApp name enrichment (if enabled and lead has a phone)
+                if args.whatsapp and lead.get("phone"):
+                    wa_name = whatsapp_lookup(lead["phone"])
+                    if wa_name:
+                        lead["full_name"] = wa_name
+                        print(f"  [wa] Resolved name: {wa_name}", file=sys.stderr)
+                    else:
+                        print(f"  [wa] No WhatsApp name for {lead['phone']}", file=sys.stderr)
+
                 buyers.append(lead)
                 print(f"  [+] BUYER (score {composite:.1f}): {reason}", file=sys.stderr)
         else:

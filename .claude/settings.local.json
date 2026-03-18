@@ -27,7 +27,14 @@
       "mcp__claude_ai_bigtorig-monitor__read_file",
       "Bash(curl -s \"https://scrapling.readthedocs.io/en/latest/fetching/dynamic.html\")",
       "Bash(curl -s \"https://scrapling.readthedocs.io/en/latest/fetching/http.html\")",
-      "Bash(curl -s \"https://scrapling.readthedocs.io/en/latest/fetching/choosing.html\")"
+      "Bash(curl -s \"https://scrapling.readthedocs.io/en/latest/fetching/choosing.html\")",
+      "Bash(git commit:*)",
+      "Bash(python3 -m py_compile scripts/gumtree_to_b2c.py)",
+      "Bash(uv run:*)",
+      "Bash(python3 -m py_compile /opt/projects/cartrack-leadgen/scripts/gumtree_scrapling.py)",
+      "Bash(npm install:*)",
+      "Bash(node --check /opt/projects/whatsapp-lookup/lookup.js)",
+      "Bash(python3 -m py_compile /opt/projects/cartrack-leadgen/scripts/gumtree_to_b2c.py)"
     ]
   }
 }

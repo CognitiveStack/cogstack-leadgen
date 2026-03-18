@@ -240,11 +240,13 @@ Update `gumtree_to_b2c.py` with `--qualify` flag:
 
 | Prerequisite | For Phase | Status |
 |-------------|-----------|--------|
-| Gumtree scraper working | A & B | ✅ Done |
-| Gumtree → webhook bridge script | A & B | **Plan created — implement next** |
-| Node.js on bigtorig | A & B | ✅ Available (n8n runs on Node) |
-| Spare WhatsApp number + SIM | B | **Needed — discuss with Charles** |
-| Baileys or whatsapp-web.js installed | A & B | Pending |
+| Gumtree scraper working | A & B | ✅ Done (Fetcher-based, 50x faster) |
+| Gumtree → webhook bridge script | A & B | ✅ Done (`scripts/gumtree_to_b2c.py`) |
+| Node.js on bigtorig | A & B | ✅ Available (v22.22.0) |
+| Baileys lookup service | A & B | ✅ Built (`/opt/projects/whatsapp-lookup/lookup.js`) |
+| `--whatsapp` flag in bridge script | A | ✅ Done |
+| Spare WhatsApp number + SIM (Phone 3) | A & B | ✅ Available (Samsung SM-J720F, dedicated leadgen number) |
+| QR code scanned with Phone 3 | A & B | **Pending — needs Charles to scan** |
 
 ## NOTES
 
