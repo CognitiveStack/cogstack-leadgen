@@ -49,33 +49,22 @@ SEARCH_URLS = [
     "https://www.gumtree.co.za/s-all-the-ads/v1b0p1?q=vehicle+tracker+wanted",
 ]
 
-# Gumtree URL path segments for categories that never produce buyer-intent tracker leads.
-# Checked at link-extraction time to skip irrelevant ads before fetching their pages.
+# Gumtree URL path segments that NEVER contain tracker buyer-intent ads.
+# Keep this list NARROW — the bridge script (gumtree_to_b2c.py) handles
+# buyer vs seller classification via LLM. Only block categories where
+# a tracker buyer ad is structurally impossible.
 # Rule: any URL segment containing "-jobs/" is a job ad — blocked in extract_ad_links().
 _BLOCKED_CATEGORIES = [
-    # Cars/vehicles for sale (sellers, not tracker buyers)
+    # Vehicles for sale (sellers listing cars/trucks, not tracker buyers)
     "/a-cars-bakkies/",
     "/a-heavy-trucks-buses/",
-    "/a-other-replacement-car-part/",
-    "/a-car-interior-accessories/",
-    "/a-accessories-styling/",
-    "/a-auto-electrical-parts/",
-    # Electronics sellers (GPS/tracker sellers, not buyers)
-    "/a-electronics-it-services/",
-    "/a-wearable-technology/",
-    # Pets
+    # Pets (pet trackers, not vehicle trackers)
     "/a-other-pets/",
-    # Removals/property/services
+    # Property / removals (never tracker-related)
     "/a-removals-storage/",
     "/a-property-",
-    "/a-other-services/",
-    "/a-legal-services/",
-    # Business-to-business
-    "/a-other-business",
-    "/a-business+to+business",
-    # Recruitment / job listings
-    "/a-recruitment-services/",
-    "/a-other-jobs/",
+    # Wearables (smart rings, fitness bands — not vehicle trackers)
+    "/a-wearable-technology/",
 ]
 
 BLOCK_SIGNALS = ["The request is blocked", "Access Denied", "cf-challenge"]
