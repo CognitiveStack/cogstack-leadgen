@@ -34,7 +34,9 @@
       "Bash(python3 -m py_compile /opt/projects/cartrack-leadgen/scripts/gumtree_scrapling.py)",
       "Bash(npm install:*)",
       "Bash(node --check /opt/projects/whatsapp-lookup/lookup.js)",
-      "Bash(python3 -m py_compile /opt/projects/cartrack-leadgen/scripts/gumtree_to_b2c.py)"
+      "Bash(python3 -m py_compile /opt/projects/cartrack-leadgen/scripts/gumtree_to_b2c.py)",
+      "mcp__claude_ai_bigtorig-monitor__list_directory",
+      "Bash(node -e \"import\\(''@whiskeysockets/baileys''\\).then\\(m => console.log\\(''makeInMemoryStore:'', typeof m.makeInMemoryStore\\)\\)\")"
     ]
   }
 }

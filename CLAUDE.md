@@ -128,8 +128,16 @@ Notion API version in use: `2022-06-28` (stable). Formula and Rollup properties 
 | `test_b2c_webhook.py` | Sends 3 B2C sample leads; validates end-to-end B2C pipeline |
 | `n8n_b2c_code_node.js` | Active B2C n8n Code node — DB IDs pre-filled; paste into B2C workflow |
 | `n8n_b2c_workflow.json` | Importable n8n B2C workflow (Webhook → Code → Respond); set header auth credential after import |
-| `scripts/gumtree_scrapling.py` | Gumtree B2C scraper — Scrapling StealthyFetcher (Cloudflare bypass) |
-| `scripts/gumtree_to_b2c.py` | Bridge: Gumtree JSON → pre-filter → LLM classify → enrich → POST to B2C webhook |
+| `scripts/gumtree_scrapling.py` | Gumtree B2C scraper — Scrapling Fetcher (curl_cffi TLS fingerprint bypass) |
+| `scripts/gumtree_to_b2c.py` | Bridge: Gumtree JSON → pre-filter → LLM classify → enrich → `--whatsapp` name lookup → POST to B2C webhook |
+| `scripts/hellopeter_scraper.py` | Hellopeter competitor churn scraper — Netstar + Tracker Connect negative reviews → B2C leads |
 | `notion_config.json` | Generated DB IDs for both B2B and B2C (committed for reference) |
 | `.claude/docs/` | Session notes, setup guide, workflow docs |
 | `.agents/plans/` | Feature implementation plans |
+
+### External services (bigtorig)
+
+| Service | Path | Purpose |
+|---------|------|---------|
+| WhatsApp lookup (Phone 3 — production) | `/opt/projects/whatsapp-lookup/` | Baileys name lookup service, port 3456. WhatsApp Business +27631650794 |
+| WhatsApp lookup (Phone 1 — temporary) | `/opt/projects/whatsapp-lookup-personal/` | Temporary instance for lookups during Phone 3 aging, port 3457. **Delete after Phone 3 verified (~2026-04-03)** |

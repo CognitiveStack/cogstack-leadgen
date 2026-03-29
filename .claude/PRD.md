@@ -3,7 +3,7 @@
 
 **Version:** 1.1
 **Date:** 2026-03-17
-**Status:** Active Development — Phase 2 (B2C pipeline live; Gumtree blocked)
+**Status:** Active Development — Phase 2 (B2C pipeline live; WhatsApp enrichment in aging)
 **Project Directory:** `/opt/projects/cartrack-leadgen`
 
 ---
@@ -16,7 +16,7 @@ Cogstack Lead Generation is an AI-powered lead discovery and qualification pipel
 
 **B2C:** Bigtorig AI Runtime discovers individual South Africans with verifiable purchase intent (Hellopeter competitor reviews, MyBroadband forums, Reddit, OLX, Gumtree). Intent signals are scored and enriched via LLM (gpt-4o-mini via OpenRouter), then submitted to a separate Notion B2C Leads DB.
 
-**Current critical blocker:** Gumtree is the only source where consumer phone numbers appear directly on listings, but it is effectively bot-proof (JS-rendered, TLS fingerprint detection, CDN-edge bot challenge). All free bypass methods (curl-impersonate, Playwright+stealth) fail to retrieve actual listings. This is the primary reason B2C lead volume is low. See Section 14 (Risks).
+**Current status:** Gumtree scraping is now live via Scrapling Fetcher (TLS fingerprint bypass, 50x faster than StealthySession). A WhatsApp name lookup service (Baileys on bigtorig) resolves phone numbers to real names before leads hit Notion. WhatsApp Business account (Phone 3) is in a 2-week aging period; temporary lookups use Phone 1 instance. Target production date: ~2026-04-03.
 
 **MVP Goal:** Deliver 10+ qualified, human-approved leads per month across both pipelines to the client's call centre, with a structured data record including prospect summary, intent signal, and a call script opener.
 
@@ -86,10 +86,15 @@ Cogstack Lead Generation is an AI-powered lead discovery and qualification pipel
 | ✅ B2C pipeline (Hellopeter, MyBroadband, Reddit, OLX) | Live — Phase 2 |
 | ✅ B2C Notion databases (Leads, Batches) | Live |
 | ✅ B2C LLM enrichment (gpt-4o-mini via OpenRouter) | Live — first run 6 leads |
-| ⚠️ Gumtree B2C source (phone numbers) | Blocked — needs ScraperAPI ($49/month) |
+| ✅ Gumtree B2C scraper (Scrapling Fetcher) | Live — buyer-intent search, 50x faster than StealthySession |
+| ✅ Gumtree → B2C bridge (LLM classify + enrich) | Live (`scripts/gumtree_to_b2c.py`) |
+| ✅ Hellopeter competitor churn scraper | Live (`scripts/hellopeter_scraper.py`) — Netstar + Tracker Connect |
+| ✅ WhatsApp name lookup service (Baileys v6.7) | Built + verified on bigtorig (2026-03-20) |
+| ⏳ WhatsApp Business account aging (Phone 3) | In progress — target ~2026-04-03 |
 | ❌ OpenClaw scraping logic — B2B (bigtorig) | In progress |
 | ❌ Phase B auto-approval (score ≥ 7) | Deferred |
 | ❌ Phase B auto-rejection (score < 4) | Deferred |
+| ❌ WhatsApp qualification outreach (Phase B) | Deferred — after name lookup production |
 | ❌ Telegram/WhatsApp notifications on QA approval | Deferred |
 | ❌ Fuzzy company name deduplication | Deferred |
 
@@ -682,17 +687,11 @@ The MVP is successful when: 10 qualified leads per month are consistently delive
 **Description:** Public data sources add bot detection, breaking scrapers. **This risk has already materialised for Gumtree** — the only B2C source with phone numbers directly on listings.
 **Likelihood:** High (ongoing maintenance burden)
 
-**Gumtree — CONFIRMED BLOCKED (as of 2026-03-15):**
+**Gumtree — RESOLVED (2026-03-18):**
 
-| Method tried | Result |
-|---|---|
-| curl-impersonate (x86_64, bigtorig) | Returns 98-byte JS shell — no listings |
-| Playwright + stealth | Listings don't render (JS-gated, CDN challenge) |
-| Direct HTTP with real UA | Same JS shell |
+Gumtree scraping now works via Scrapling Fetcher (`scripts/gumtree_scrapling.py`) using curl_cffi with browser TLS fingerprints. No Chromium needed. ~1s per page. Bridge script (`scripts/gumtree_to_b2c.py`) filters seller ads via LLM classification (gpt-4o-mini) and enriches buyer-intent leads before POSTing to B2C webhook.
 
-Root cause: Listings loaded via AJAX behind a bot challenge gate. No Notion API XHR intercepted during Playwright session. **Resolution requires a paid scraping API (ScraperAPI ~$49/month or Zyte).** This is a cost decision for Charles.
-
-**Impact:** Without Gumtree, B2C leads have no directly-visible phone numbers. All other sources (Hellopeter, MyBroadband, Reddit, OLX) require agents to call back via name/intent context — lower contact rate.
+**Remaining enrichment gap:** Gumtree ads often show phone numbers but rarely names. WhatsApp name lookup service (Baileys on bigtorig) resolves phone → real name. Service built and verified 2026-03-20; WhatsApp Business account aging until ~2026-04-03.
 
 **Mitigation (general):**
 - Monitor Batches DB for batches with 0 leads from a specific source
