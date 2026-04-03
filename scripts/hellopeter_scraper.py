@@ -14,6 +14,7 @@
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -24,6 +25,34 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── Logging ──────────────────────────────────────────────────
+
+log = logging.getLogger("hellopeter")
+
+
+def setup_logging() -> None:
+    """Configure console + file logging."""
+    log.setLevel(logging.DEBUG)
+
+    console = logging.StreamHandler(sys.stderr)
+    console.setLevel(logging.INFO)
+    console.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    log.addHandler(console)
+
+    log_dir = Path(__file__).parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    fh = logging.FileHandler(log_dir / f"b2c-hellopeter-{today}.log", encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+    log.addHandler(fh)
+
+
+# ── Retry constants ──────────────────────────────────────────
+
+MAX_RETRIES = 3
+RETRY_DELAYS = [2, 5, 15]  # seconds
 
 # ── Config ───────────────────────────────────────────────────
 
@@ -52,7 +81,7 @@ def fetch_reviews(slug: str, max_pages: int = 20) -> list[dict]:
             body = resp.body.decode("utf-8", errors="ignore") if isinstance(resp.body, bytes) else str(resp.body)
             data = json.loads(body)
         except Exception as e:
-            print(f"[hellopeter] Error fetching page {page_num} for {slug}: {e}", file=sys.stderr)
+            log.warning("Error fetching page %d for %s: %s", page_num, slug, e)
             break
 
         reviews = data.get("data", [])
@@ -227,9 +256,13 @@ def review_to_lead(review: dict) -> dict:
 # ── Webhook POST ─────────────────────────────────────────────
 
 def post_to_webhook(leads: list[dict], batch_id: str) -> dict | None:
-    """POST the B2C batch to the n8n webhook."""
+    """POST the B2C batch to the n8n webhook.
+
+    Retries on 5xx and timeout errors with exponential backoff.
+    4xx errors fail immediately.
+    """
     if not B2C_WEBHOOK_URL or not B2C_WEBHOOK_TOKEN:
-        print("[hellopeter] ERROR: B2C_WEBHOOK_URL / B2C_WEBHOOK_TOKEN not set", file=sys.stderr)
+        log.error("B2C_WEBHOOK_URL / B2C_WEBHOOK_TOKEN not set")
         return None
 
     payload = {
@@ -238,25 +271,35 @@ def post_to_webhook(leads: list[dict], batch_id: str) -> dict | None:
         "leads": leads,
     }
 
-    try:
-        response = httpx.post(
-            B2C_WEBHOOK_URL,
-            json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {B2C_WEBHOOK_TOKEN}",
-            },
-            timeout=60.0,
-        )
-        print(f"[hellopeter] Webhook response: {response.status_code}", file=sys.stderr)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"[hellopeter] Webhook error: {response.text[:500]}", file=sys.stderr)
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = httpx.post(
+                B2C_WEBHOOK_URL,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {B2C_WEBHOOK_TOKEN}",
+                },
+                timeout=60.0,
+            )
+            log.info("Webhook response: %d", response.status_code)
+            if response.status_code == 200:
+                return response.json()
+            if response.status_code >= 500:
+                delay = RETRY_DELAYS[attempt]
+                log.warning("Webhook server error %d, retrying in %ds (attempt %d/%d)", response.status_code, delay, attempt + 1, MAX_RETRIES)
+                time.sleep(delay)
+                continue
+            # 4xx — client error, don't retry
+            log.error("Webhook error %d: %s", response.status_code, response.text[:500])
             return None
-    except httpx.HTTPError as e:
-        print(f"[hellopeter] Webhook request failed: {e}", file=sys.stderr)
-        return None
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            delay = RETRY_DELAYS[attempt]
+            log.warning("Webhook request failed: %s, retrying in %ds (attempt %d/%d)", e, delay, attempt + 1, MAX_RETRIES)
+            time.sleep(delay)
+
+    log.error("Webhook POST failed after %d retries", MAX_RETRIES)
+    return None
 
 
 # ── CLI + Main ───────────────────────────────────────────────
@@ -279,9 +322,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    setup_logging()
     args = parse_args()
 
-    print(f"[hellopeter] Starting — max {args.max_leads} leads, last {args.days} days, ≤{args.max_rating}★", file=sys.stderr)
+    log.info("Starting — max %d leads, last %d days, ≤%d★", args.max_leads, args.days, args.max_rating)
 
     all_leads: list[dict] = []
     seen_authors: set[str] = set()  # Dedup by author name
@@ -294,16 +338,15 @@ def main() -> None:
         name = comp["name"]
 
         # Calculate pages needed (11 reviews per page, but many will be filtered)
-        # Fetch more pages than needed since we filter heavily
         max_pages = min(50, (args.max_leads * 3) // 11 + 1)
 
-        print(f"[hellopeter] Fetching {name} reviews (up to {max_pages} pages)...", file=sys.stderr)
+        log.info("Fetching %s reviews (up to %d pages)...", name, max_pages)
         reviews = fetch_reviews(slug, max_pages=max_pages)
-        print(f"[hellopeter] {name}: {len(reviews)} raw reviews fetched", file=sys.stderr)
+        log.info("%s: %d raw reviews fetched", name, len(reviews))
 
         # Filter
         negative = filter_negative_reviews(reviews, max_rating=args.max_rating, days=args.days)
-        print(f"[hellopeter] {name}: {len(negative)} negative reviews in last {args.days} days", file=sys.stderr)
+        log.info("%s: %d negative reviews in last %d days", name, len(negative), args.days)
 
         # Convert to leads
         for review in negative:
@@ -337,34 +380,35 @@ def main() -> None:
     all_leads = all_leads[: args.max_leads]
 
     # Report
-    print(f"\n{'=' * 60}", file=sys.stderr)
-    print(f"[hellopeter] RESULTS: {len(all_leads)} qualified churn leads", file=sys.stderr)
-    print(f"{'=' * 60}", file=sys.stderr)
+    log.info("")
+    log.info("=" * 60)
+    log.info("RESULTS: %d qualified churn leads", len(all_leads))
+    log.info("=" * 60)
 
     for i, lead in enumerate(all_leads[:10], 1):  # Show top 10
         composite = lead["intent_strength"] * 0.6 + lead["urgency_score"] * 0.4
-        print(f"\n  #{i} {lead['full_name']} ({lead['competitor']}, {lead['review_rating']}★)", file=sys.stderr)
-        print(f"     Score: {composite:.1f} (intent={lead['intent_strength']}, urgency={lead['urgency_score']})", file=sys.stderr)
-        print(f"     Date:  {lead['intent_date']}", file=sys.stderr)
-        story_preview = lead["intent_signal"][:150]
-        print(f"     Story: {story_preview}...", file=sys.stderr)
+        log.info("")
+        log.info("  #%d %s (%s, %d★)", i, lead['full_name'], lead['competitor'], lead['review_rating'])
+        log.info("     Score: %.1f (intent=%d, urgency=%d)", composite, lead['intent_strength'], lead['urgency_score'])
+        log.info("     Date:  %s", lead['intent_date'])
+        log.debug("     Story: %s...", lead['intent_signal'][:150])
 
     if len(all_leads) > 10:
-        print(f"\n  ... and {len(all_leads) - 10} more leads", file=sys.stderr)
+        log.info("  ... and %d more leads", len(all_leads) - 10)
 
     # Write output file
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(all_leads, f, indent=2, ensure_ascii=False)
-    print(f"\n[hellopeter] Saved → {args.out}", file=sys.stderr)
+    log.info("Saved → %s", args.out)
 
     # POST to webhook
     if args.post:
         batch_id = f"B2C-BATCH-{datetime.now().strftime('%Y-%m-%d')}-HELLOPETER-001"
-        print(f"\n[hellopeter] POSTing {len(all_leads)} leads as batch {batch_id}", file=sys.stderr)
+        log.info("POSTing %d leads as batch %s", len(all_leads), batch_id)
         result = post_to_webhook(all_leads, batch_id)
         if result:
-            print(f"[hellopeter] Webhook result: {json.dumps(result, indent=2)}", file=sys.stderr)
+            log.info("Webhook result: %s", json.dumps(result, indent=2))
 
     # Stdout: structured result
     print(json.dumps({

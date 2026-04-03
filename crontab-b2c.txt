@@ -1,0 +1,34 @@
+# =============================================================
+# B2C Pipeline — Cron Schedule (bigtorig)
+# =============================================================
+# Install with:
+#   crontab -e
+# Paste the lines below, adjusting paths if needed.
+#
+# Times are UTC. SAST = UTC+2.
+#   04:00 UTC = 06:00 SAST  (morning run)
+#   16:00 UTC = 18:00 SAST  (evening run)
+#
+# Prerequisites on bigtorig:
+#   - /opt/projects/cartrack-leadgen/.env populated
+#   - /opt/projects/whatsapp-lookup/lookup.js running as a persistent
+#     service (pm2 or systemd) on port 3456 with Phone 3 auth
+#   - uv installed at /usr/local/bin/uv (check: which uv)
+#   - logs/ directory writable (created automatically by scripts)
+#
+# To verify after install:
+#   crontab -l                              # confirm entries
+#   tail -f /opt/projects/cartrack-leadgen/logs/cron-b2c.log
+# =============================================================
+
+# ── B2C full pipeline (Gumtree + Hellopeter + WhatsApp enrichment) ──────────
+0 4  * * * cd /opt/projects/cartrack-leadgen && /usr/local/bin/uv run python scripts/b2c_run.py --whatsapp >> logs/cron-b2c.log 2>&1
+0 16 * * * cd /opt/projects/cartrack-leadgen && /usr/local/bin/uv run python scripts/b2c_run.py --whatsapp >> logs/cron-b2c.log 2>&1
+
+# ── Optional: pre-flight health check (runs 5 min before each pipeline run) ──
+# 55 3  * * * cd /opt/projects/cartrack-leadgen && /usr/local/bin/uv run python scripts/b2c_healthcheck.py >> logs/cron-b2c.log 2>&1
+# 55 15 * * * cd /opt/projects/cartrack-leadgen && /usr/local/bin/uv run python scripts/b2c_healthcheck.py >> logs/cron-b2c.log 2>&1
+
+# ── WhatsApp lookup service watchdog: restart if process not found ────────────
+# (Only needed if NOT using pm2/systemd for the Node.js service)
+# */15 * * * * pgrep -f "whatsapp-lookup/lookup.js" > /dev/null || (cd /opt/projects/whatsapp-lookup && node lookup.js >> /tmp/whatsapp-lookup.log 2>&1 &)

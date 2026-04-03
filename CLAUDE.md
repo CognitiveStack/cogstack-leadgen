@@ -129,9 +129,13 @@ Notion API version in use: `2022-06-28` (stable). Formula and Rollup properties 
 | `n8n_b2c_code_node.js` | Active B2C n8n Code node — DB IDs pre-filled; paste into B2C workflow |
 | `n8n_b2c_workflow.json` | Importable n8n B2C workflow (Webhook → Code → Respond); set header auth credential after import |
 | `scripts/gumtree_scrapling.py` | Gumtree B2C scraper — Scrapling Fetcher (curl_cffi TLS fingerprint bypass) |
-| `scripts/gumtree_to_b2c.py` | Bridge: Gumtree JSON → pre-filter → LLM classify → enrich → `--whatsapp` name lookup → POST to B2C webhook |
+| `scripts/gumtree_to_b2c.py` | Bridge: Gumtree JSON → pre-filter → LLM classify → enrich → `--whatsapp` name lookup → POST to B2C webhook. Flags: `--dry-run`, `--skip-llm`, `--whatsapp`, `--whatsapp-url` |
 | `scripts/hellopeter_scraper.py` | Hellopeter competitor churn scraper — Netstar + Tracker Connect negative reviews → B2C leads |
+| `scripts/b2c_run.py` | **Unified B2C runner** — orchestrates Gumtree + Hellopeter in sequence with isolated error handling. Flags: `--dry-run`, `--gumtree-only`, `--hellopeter-only`, `--whatsapp`, `--whatsapp-url`. Writes `logs/b2c-run-YYYY-MM-DD.json`. Designed for cron. |
+| `scripts/b2c_healthcheck.py` | **Dependency health check** — verifies WhatsApp service, n8n webhook, OpenRouter API, Notion DB. Exit 0 if all OK, exit 1 if any critical service down. |
+| `crontab-b2c.txt` | Cron reference for bigtorig — paste into `crontab -e`. Runs `b2c_run.py --whatsapp` at 04:00 + 16:00 UTC (06:00 + 18:00 SAST). |
 | `notion_config.json` | Generated DB IDs for both B2B and B2C (committed for reference) |
+| `logs/` | Auto-created runtime directory. `*.log` and `*.json` gitignored; `.gitkeep` tracks dir |
 | `.claude/docs/` | Session notes, setup guide, workflow docs |
 | `.agents/plans/` | Feature implementation plans |
 
@@ -139,5 +143,26 @@ Notion API version in use: `2022-06-28` (stable). Formula and Rollup properties 
 
 | Service | Path | Purpose |
 |---------|------|---------|
-| WhatsApp lookup (Phone 3 — production) | `/opt/projects/whatsapp-lookup/` | Baileys name lookup service, port 3456. WhatsApp Business +27631650794 |
-| WhatsApp lookup (Phone 1 — temporary) | `/opt/projects/whatsapp-lookup-personal/` | Temporary instance for lookups during Phone 3 aging, port 3457. **Delete after Phone 3 verified (~2026-04-03)** |
+| WhatsApp lookup (Phone 3 — production) | `/opt/projects/whatsapp-lookup/` | Baileys name lookup service, port 3456. WhatsApp Business +27631650794. **Pending Phone 3 aging (~2026-04-03)** |
+| WhatsApp lookup (Phone 1 — temporary) | `/opt/projects/whatsapp-lookup-personal/` | Temp instance, port 3457. 278 contacts cached. **Active until Phone 3 verified. Delete after.** |
+
+### Pipeline hardening (added 2026-03-29)
+
+| Component | Pattern |
+|-----------|---------|
+| Webhook POST retries | 3× with `[2, 5, 15]`s backoff. 5xx/timeout retries; 4xx fails immediately |
+| LLM API retries | 3× backoff + `Retry-After` header respected on 429 |
+| WhatsApp lookup retry | 1 retry after 3s on timeout only |
+| Logging | `logging` module — INFO to stderr, DEBUG to `logs/b2c-{source}-YYYY-MM-DD.log` |
+| Run log | `logs/b2c-run-YYYY-MM-DD.json` — array of pipeline run summaries |
+
+### Phone 3 migration checklist (~2026-04-03)
+
+```bash
+# On bigtorig — run in order:
+cd /opt/projects/whatsapp-lookup && rm -rf auth_info/ && node lookup.js  # scan QR with Phone 3
+# Test: curl -s -X POST http://localhost:3456/lookup -H 'Content-Type: application/json' -d '{"phone":"+27XXX"}' | jq .
+# If name resolves:
+sed -i 's|WHATSAPP_LOOKUP_URL=http://127.0.0.1:3457|WHATSAPP_LOOKUP_URL=http://127.0.0.1:3456|' .env
+rm -rf /opt/projects/whatsapp-lookup-personal/   # decommission Phone 1
+```

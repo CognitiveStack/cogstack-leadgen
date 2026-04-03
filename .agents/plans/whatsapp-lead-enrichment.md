@@ -290,7 +290,7 @@ Batch of 50 numbers:
 - [ ] `gumtree_to_b2c.py --whatsapp` resolves phone → name for valid WhatsApp numbers
 - [ ] Leads in Notion show real names instead of "Unknown" (when WhatsApp name available)
 - [x] Rate limiting: `lookup.js` updated to 2–5 sec random jitter, 100/session (2026-03-20)
-- [ ] Graceful fallback: if service is down or number not on WhatsApp, name stays "Unknown"
+- [x] Graceful fallback: if service is down or number not on WhatsApp, name stays "Unknown" (2026-03-29 — `whatsapp_lookup()` catches all HTTP + timeout errors, returns None, name stays as LLM-resolved or "Unknown")
 
 ### Phase B
 - [ ] Qualification message sent to buyer-intent leads
@@ -311,6 +311,7 @@ Batch of 50 numbers:
 | Node.js on bigtorig | A & B | ✅ Available (v22.22.0) |
 | Baileys lookup service | A & B | ✅ Built (`/opt/projects/whatsapp-lookup/lookup.js`) |
 | `--whatsapp` flag in bridge script | A | ✅ Done |
+| `--whatsapp-url` override flag | A | ✅ Done (2026-03-29) — allows runtime port switching for Phone 1 fallback |
 | Spare WhatsApp number + SIM (Phone 3) | A & B | ✅ Available (Samsung SM-J720F, dedicated leadgen number) |
 | WhatsApp Business app installed on Phone 3 | A & B | ✅ Done (2026-03-20) — "Charles B" / "Vehicle Tracking Solutions" / +27631650794 |
 | WhatsApp Business profile configured | A & B | ✅ Done (2026-03-20) — SUV photo, description set |
@@ -321,6 +322,12 @@ Batch of 50 numbers:
 | Name resolution on Phone 3 | A | **Pending — needs chat history (aging). Re-test ~2026-04-03** |
 | Temp Phone 1 instance | A | ✅ Running at `/opt/projects/whatsapp-lookup-personal/` PORT=3457 — **delete after Phone 3 verified** |
 | 2-week account aging period | A | **In progress — started 2026-03-20, target ~2026-04-03** |
+| Webhook retry logic (3× backoff) | A & B | ✅ Done (2026-03-29) — `gumtree_to_b2c.py`, `hellopeter_scraper.py` |
+| LLM retry logic (429 + 5xx) | A | ✅ Done (2026-03-29) — `gumtree_to_b2c.py` |
+| Structured logging (`logs/` dir) | A & B | ✅ Done (2026-03-29) — console INFO + file DEBUG |
+| Unified runner `b2c_run.py` | A & B | ✅ Done (2026-03-29) — orchestrates both pipelines, JSON run log |
+| Health check `b2c_healthcheck.py` | A & B | ✅ Done (2026-03-29) — checks all 4 external dependencies |
+| Cron schedule on bigtorig | A & B | **Pending — reference in `crontab-b2c.txt`, install with `crontab -e`** |
 
 ## NOTES
 
@@ -331,12 +338,13 @@ Batch of 50 numbers:
 3. ~~**Now:** Connect Baileys to Phone 3, verify connection~~ ✅ Done 2026-03-20
 4. ~~**Now:** Fix name resolution — `makeInMemoryStore` removed in Baileys v6.7, replaced with event-based cache~~ ✅ Done 2026-03-20
 5. ~~**Now:** Verify name resolution works (Phone 1 temporary instance)~~ ✅ Done 2026-03-20 — "Claire Shuttleworth" confirmed
-6. **Now → April 3rd:** Use Phone 1 temp instance (PORT=3457) for limited lookups (max 10). Use Phone 3 normally to build chat history.
-7. **~2026-04-03:** Re-scan Phone 3 QR (`rm -rf auth_info/` to force fresh `syncFullHistory`), verify name resolution, switch to production
-8. **After Phone 3 verified:** Delete `/opt/projects/whatsapp-lookup-personal/`, unlink Phone 1 from Baileys
-9. **Then:** Phase B (WhatsApp qualification) — filters to only warm leads
-10. **Future:** Add Truecaller unofficial wrapper as supplementary fallback
-11. **Future:** Integrate with Bigtorig Runtime's HEARTBEAT schedule for automated runs
+6. ~~**Now → April 3rd:** Use Phone 1 temp instance (PORT=3457) for limited lookups. Use Phone 3 normally to build chat history.~~ ✅ In progress — `.env` set to PORT=3457, `--whatsapp-url` fallback wired
+7. ~~**Harden pipeline:** retry logic, structured logging, unified runner, health check~~ ✅ Done 2026-03-29 — see `b2c_run.py`, `b2c_healthcheck.py`, `logs/`
+8. **~2026-04-03:** Re-scan Phone 3 QR (`rm -rf auth_info/` to force fresh `syncFullHistory`), verify name resolution, `sed` `.env` 3457→3456
+9. **After Phone 3 verified:** Delete `/opt/projects/whatsapp-lookup-personal/`, unlink Phone 1 from Baileys
+10. **Install cron** on bigtorig — `crontab -e`, paste from `crontab-b2c.txt`
+11. **Then:** Phase B (WhatsApp qualification) — filters to only warm leads
+12. **Future:** Add Truecaller unofficial wrapper as supplementary fallback
 
 ### Why not other lookup services?
 

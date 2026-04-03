@@ -11,11 +11,13 @@
 #   uv run python scripts/gumtree_to_b2c.py --dry-run
 #   uv run python scripts/gumtree_to_b2c.py --skip-llm
 #   uv run python scripts/gumtree_to_b2c.py --whatsapp          # enrich names via WhatsApp lookup service
+#   uv run python scripts/gumtree_to_b2c.py --whatsapp --whatsapp-url http://127.0.0.1:3457
 # =============================================================
 
 import argparse
 import html
 import json
+import logging
 import os
 import re
 import sys
@@ -28,6 +30,31 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Logging ──────────────────────────────────────────────────
+
+log = logging.getLogger("bridge")
+
+
+def setup_logging() -> None:
+    """Configure console + file logging."""
+    log.setLevel(logging.DEBUG)
+
+    # Console: INFO level
+    console = logging.StreamHandler(sys.stderr)
+    console.setLevel(logging.INFO)
+    console.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    log.addHandler(console)
+
+    # File: DEBUG level — logs/b2c-bridge-YYYY-MM-DD.log
+    log_dir = Path(__file__).parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    fh = logging.FileHandler(log_dir / f"b2c-bridge-{today}.log", encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+    log.addHandler(fh)
+
+
 # ── Environment ──────────────────────────────────────────────
 
 B2C_WEBHOOK_URL = os.environ.get("B2C_WEBHOOK_URL")
@@ -35,6 +62,11 @@ B2C_WEBHOOK_TOKEN = os.environ.get("B2C_WEBHOOK_TOKEN") or os.environ.get("WEBHO
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 WHATSAPP_LOOKUP_URL = os.environ.get("WHATSAPP_LOOKUP_URL", "http://127.0.0.1:3456")
+
+# ── Retry constants ──────────────────────────────────────────
+
+MAX_RETRIES = 3
+RETRY_DELAYS = [2, 5, 15]  # seconds — exponential backoff
 
 # ── Pre-filter keyword lists ─────────────────────────────────
 
@@ -111,23 +143,35 @@ def infer_province(location: str | None) -> str | None:
 
 # ── WhatsApp name lookup ─────────────────────────────────────
 
-def whatsapp_lookup(phone: str) -> str | None:
+def whatsapp_lookup(phone: str, lookup_url: str | None = None) -> str | None:
     """Look up WhatsApp profile name for a phone number.
 
     Requires the lookup service at /opt/projects/whatsapp-lookup to be running.
     Returns the profile name or None if not found / service unavailable.
+    Retries once on timeout (Baileys can be slow after idle).
     """
-    try:
-        resp = httpx.post(
-            f"{WHATSAPP_LOOKUP_URL}/lookup",
-            json={"phone": phone},
-            timeout=15.0,
-        )
-        data = resp.json()
-        if data.get("exists") and data.get("name"):
-            return data["name"]
-    except (httpx.HTTPError, httpx.TimeoutException):
-        pass
+    base_url = lookup_url or WHATSAPP_LOOKUP_URL
+    for attempt in range(2):  # 1 retry on timeout
+        try:
+            resp = httpx.post(
+                f"{base_url}/lookup",
+                json={"phone": phone},
+                timeout=15.0,
+            )
+            data = resp.json()
+            if data.get("exists") and data.get("name"):
+                return data["name"]
+            log.debug("WhatsApp lookup for %s: exists=%s, name=%s", phone, data.get("exists"), data.get("name"))
+            return None  # exists but no name, or not on WhatsApp — don't retry
+        except httpx.TimeoutException:
+            if attempt == 0:
+                log.debug("WhatsApp lookup timeout for %s, retrying in 3s...", phone)
+                time.sleep(3)
+                continue
+            log.warning("WhatsApp lookup timeout for %s after retry", phone)
+        except httpx.HTTPError as e:
+            log.warning("WhatsApp lookup HTTP error for %s: %s", phone, e)
+            break
     return None
 
 
@@ -198,7 +242,10 @@ Classification rules:
 
 
 def llm_classify(ad: dict) -> dict | None:
-    """Classify and enrich a Gumtree ad via gpt-4o-mini on OpenRouter."""
+    """Classify and enrich a Gumtree ad via gpt-4o-mini on OpenRouter.
+
+    Retries on 429 (rate limit with Retry-After) and 5xx errors.
+    """
     if not OPENROUTER_API_KEY:
         return None
 
@@ -215,41 +262,60 @@ def llm_classify(ad: dict) -> dict | None:
         url=ad.get("url") or "",
     )
 
-    try:
-        response = httpx.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "openai/gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": 500,
-            },
-            timeout=30.0,
-        )
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = httpx.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "openai/gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 500,
+                },
+                timeout=30.0,
+            )
 
-        if response.status_code != 200:
-            print(f"[bridge] LLM API error: {response.status_code} {response.text[:200]}", file=sys.stderr)
+            if response.status_code == 429:
+                # Rate limited — respect Retry-After header
+                retry_after = int(response.headers.get("Retry-After", RETRY_DELAYS[attempt]))
+                log.warning("LLM rate limited (429), retrying in %ds (attempt %d/%d)", retry_after, attempt + 1, MAX_RETRIES)
+                time.sleep(retry_after)
+                continue
+
+            if response.status_code >= 500:
+                # Server error — retry with backoff
+                delay = RETRY_DELAYS[attempt]
+                log.warning("LLM server error %d, retrying in %ds (attempt %d/%d)", response.status_code, delay, attempt + 1, MAX_RETRIES)
+                time.sleep(delay)
+                continue
+
+            if response.status_code != 200:
+                log.error("LLM API error: %d %s", response.status_code, response.text[:200])
+                return None
+
+            content = response.json()["choices"][0]["message"]["content"]
+            # Strip markdown code fences if present
+            content = content.strip()
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+
+            return json.loads(content)
+
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            log.error("LLM response parse error: %s", e)
             return None
+        except httpx.HTTPError as e:
+            delay = RETRY_DELAYS[attempt]
+            log.warning("LLM request failed: %s, retrying in %ds (attempt %d/%d)", e, delay, attempt + 1, MAX_RETRIES)
+            time.sleep(delay)
 
-        content = response.json()["choices"][0]["message"]["content"]
-        # Strip markdown code fences if present
-        content = content.strip()
-        if content.startswith("```"):
-            content = re.sub(r"^```(?:json)?\s*", "", content)
-            content = re.sub(r"\s*```$", "", content)
-
-        return json.loads(content)
-
-    except (json.JSONDecodeError, KeyError, IndexError) as e:
-        print(f"[bridge] LLM response parse error: {e}", file=sys.stderr)
-        return None
-    except httpx.HTTPError as e:
-        print(f"[bridge] LLM request failed: {e}", file=sys.stderr)
-        return None
+    log.error("LLM classify failed after %d retries", MAX_RETRIES)
+    return None
 
 
 # ── Lead assembly ────────────────────────────────────────────
@@ -279,12 +345,16 @@ def gumtree_ad_to_lead(ad: dict, enrichment: dict) -> dict:
 # ── Webhook POST ─────────────────────────────────────────────
 
 def post_to_webhook(leads: list[dict], batch_id: str) -> dict | None:
-    """POST the B2C batch to the n8n webhook. Returns response JSON or None."""
+    """POST the B2C batch to the n8n webhook. Returns response JSON or None.
+
+    Retries on 5xx and timeout errors with exponential backoff.
+    4xx errors fail immediately (client error — don't retry).
+    """
     if not B2C_WEBHOOK_URL:
-        print("[bridge] ERROR: B2C_WEBHOOK_URL not set in .env", file=sys.stderr)
+        log.error("B2C_WEBHOOK_URL not set in .env")
         return None
     if not B2C_WEBHOOK_TOKEN:
-        print("[bridge] ERROR: B2C_WEBHOOK_TOKEN not set in .env", file=sys.stderr)
+        log.error("B2C_WEBHOOK_TOKEN not set in .env")
         return None
 
     payload = {
@@ -293,25 +363,35 @@ def post_to_webhook(leads: list[dict], batch_id: str) -> dict | None:
         "leads": leads,
     }
 
-    try:
-        response = httpx.post(
-            B2C_WEBHOOK_URL,
-            json=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {B2C_WEBHOOK_TOKEN}",
-            },
-            timeout=60.0,
-        )
-        print(f"[bridge] Webhook response: {response.status_code}", file=sys.stderr)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"[bridge] Webhook error: {response.text[:500]}", file=sys.stderr)
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = httpx.post(
+                B2C_WEBHOOK_URL,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {B2C_WEBHOOK_TOKEN}",
+                },
+                timeout=60.0,
+            )
+            log.info("Webhook response: %d", response.status_code)
+            if response.status_code == 200:
+                return response.json()
+            if response.status_code >= 500:
+                delay = RETRY_DELAYS[attempt]
+                log.warning("Webhook server error %d, retrying in %ds (attempt %d/%d)", response.status_code, delay, attempt + 1, MAX_RETRIES)
+                time.sleep(delay)
+                continue
+            # 4xx — client error, don't retry
+            log.error("Webhook error %d: %s", response.status_code, response.text[:500])
             return None
-    except httpx.HTTPError as e:
-        print(f"[bridge] Webhook request failed: {e}", file=sys.stderr)
-        return None
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            delay = RETRY_DELAYS[attempt]
+            log.warning("Webhook request failed: %s, retrying in %ds (attempt %d/%d)", e, delay, attempt + 1, MAX_RETRIES)
+            time.sleep(delay)
+
+    log.error("Webhook POST failed after %d retries", MAX_RETRIES)
+    return None
 
 
 # ── CLI + Main ───────────────────────────────────────────────
@@ -341,33 +421,44 @@ def parse_args() -> argparse.Namespace:
         "--whatsapp", action="store_true",
         help="Enrich leads with WhatsApp profile names (requires lookup service running)"
     )
+    parser.add_argument(
+        "--whatsapp-url", type=str, default=None,
+        help="Override WHATSAPP_LOOKUP_URL (e.g. http://127.0.0.1:3457 for Phone 1 fallback)"
+    )
     return parser.parse_args()
 
 
 def main() -> None:
+    setup_logging()
     args = parse_args()
+
+    # ── Override WhatsApp URL if specified ──
+    global WHATSAPP_LOOKUP_URL
+    if args.whatsapp_url:
+        WHATSAPP_LOOKUP_URL = args.whatsapp_url
+        log.info("WhatsApp URL overridden to %s", WHATSAPP_LOOKUP_URL)
 
     # ── Load input ──
     input_path = args.input
     if not Path(input_path).exists():
-        print(f"[bridge] ERROR: Input file not found: {input_path}", file=sys.stderr)
-        print(f"[bridge] Run gumtree_scrapling.py first, or use --input to specify a file", file=sys.stderr)
+        log.error("Input file not found: %s", input_path)
+        log.error("Run gumtree_scrapling.py first, or use --input to specify a file")
         sys.exit(1)
 
     with open(input_path, encoding="utf-8") as f:
         ads = json.load(f)
 
     if not isinstance(ads, list):
-        print(f"[bridge] ERROR: Expected JSON array, got {type(ads).__name__}", file=sys.stderr)
+        log.error("Expected JSON array, got %s", type(ads).__name__)
         sys.exit(1)
 
     total = len(ads)
-    print(f"[bridge] Loaded {total} ads from {input_path}", file=sys.stderr)
+    log.info("Loaded %d ads from %s", total, input_path)
 
     # ── Check env for non-dry-run ──
     if not args.dry_run and not args.skip_llm and not OPENROUTER_API_KEY:
-        print("[bridge] ERROR: OPENROUTER_API_KEY not set in .env", file=sys.stderr)
-        print("[bridge] Set it or use --skip-llm to run without LLM classification", file=sys.stderr)
+        log.error("OPENROUTER_API_KEY not set in .env")
+        log.error("Set it or use --skip-llm to run without LLM classification")
         sys.exit(1)
 
     # ── Phase 1: Pre-filter ──
@@ -381,17 +472,15 @@ def main() -> None:
         else:
             pre_filtered.append(ad)
 
-    print(f"[bridge] Pre-filter: {len(pre_filtered)} passed, {len(pre_rejected)} rejected", file=sys.stderr)
+    log.info("Pre-filter: %d passed, %d rejected", len(pre_filtered), len(pre_rejected))
     for ad, reason in pre_rejected:
-        print(f"  [x] \"{ad.get('title', '?')[:60]}\" — {reason}", file=sys.stderr)
+        log.debug('  [x] "%s" — %s', ad.get('title', '?')[:60], reason)
 
     if args.skip_llm:
-        # In skip-llm mode, treat all pre-filtered ads as potential leads
-        print(f"[bridge] --skip-llm: {len(pre_filtered)} ads passed pre-filter (no LLM classification)", file=sys.stderr)
+        log.info("--skip-llm: %d ads passed pre-filter (no LLM classification)", len(pre_filtered))
         for ad in pre_filtered:
-            print(f"  [?] \"{ad.get('title', '?')[:60]}\" | phone: {ad.get('phone') or 'none'}", file=sys.stderr)
+            log.debug('  [?] "%s" | phone: %s', ad.get('title', '?')[:60], ad.get('phone') or 'none')
 
-        # Output summary as JSON
         result = {"ok": True, "total": total, "pre_filtered": len(pre_rejected), "passed": len(pre_filtered)}
         print(json.dumps(result))
         return
@@ -399,12 +488,14 @@ def main() -> None:
     # ── Phase 2: LLM classification + enrichment ──
     buyers: list[dict] = []
     llm_rejected: list[tuple[dict, str]] = []
+    wa_resolved = 0
+    wa_attempted = 0
 
     for i, ad in enumerate(pre_filtered):
         if i > 0:
             time.sleep(0.2)  # Rate limit: 200ms between LLM calls
 
-        print(f"[bridge] LLM classifying ({i + 1}/{len(pre_filtered)}): \"{ad.get('title', '?')[:50]}\"", file=sys.stderr)
+        log.info('LLM classifying (%d/%d): "%s"', i + 1, len(pre_filtered), ad.get('title', '?')[:50])
 
         enrichment = llm_classify(ad)
         if not enrichment:
@@ -418,37 +509,42 @@ def main() -> None:
             composite = enrichment.get("intent_strength", 0) * 0.6 + enrichment.get("urgency_score", 0) * 0.4
             if composite < 5:
                 llm_rejected.append((ad, f"BUYER but score too low ({composite:.1f})"))
-                print(f"  [~] BUYER but composite {composite:.1f} < 5 — skipped", file=sys.stderr)
+                log.info("  [~] BUYER but composite %.1f < 5 — skipped", composite)
             else:
                 lead = gumtree_ad_to_lead(ad, enrichment)
 
                 # WhatsApp name enrichment (if enabled and lead has a phone)
                 if args.whatsapp and lead.get("phone"):
-                    wa_name = whatsapp_lookup(lead["phone"])
+                    wa_attempted += 1
+                    wa_name = whatsapp_lookup(lead["phone"], args.whatsapp_url)
                     if wa_name:
                         lead["full_name"] = wa_name
-                        print(f"  [wa] Resolved name: {wa_name}", file=sys.stderr)
+                        wa_resolved += 1
+                        log.info("  [wa] Resolved name: %s", wa_name)
                     else:
-                        print(f"  [wa] No WhatsApp name for {lead['phone']}", file=sys.stderr)
+                        log.info("  [wa] No WhatsApp name for %s", lead['phone'])
 
                 buyers.append(lead)
-                print(f"  [+] BUYER (score {composite:.1f}): {reason}", file=sys.stderr)
+                log.info("  [+] BUYER (score %.1f): %s", composite, reason)
         else:
             llm_rejected.append((ad, f"{classification}: {reason}"))
-            print(f"  [-] {classification}: {reason}", file=sys.stderr)
+            log.debug("  [-] %s: %s", classification, reason)
 
     # ── Report ──
-    print(f"\n{'=' * 60}", file=sys.stderr)
-    print(f"[bridge] REPORT", file=sys.stderr)
-    print(f"  Total ads loaded:      {total}", file=sys.stderr)
-    print(f"  Pre-filter rejected:   {len(pre_rejected)}", file=sys.stderr)
-    print(f"  LLM classified:        {len(pre_filtered)}", file=sys.stderr)
-    print(f"  LLM rejected:          {len(llm_rejected)}", file=sys.stderr)
-    print(f"  Qualified buyers:      {len(buyers)}", file=sys.stderr)
-    print(f"{'=' * 60}", file=sys.stderr)
+    log.info("")
+    log.info("=" * 60)
+    log.info("REPORT")
+    log.info("  Total ads loaded:      %d", total)
+    log.info("  Pre-filter rejected:   %d", len(pre_rejected))
+    log.info("  LLM classified:        %d", len(pre_filtered))
+    log.info("  LLM rejected:          %d", len(llm_rejected))
+    log.info("  Qualified buyers:      %d", len(buyers))
+    if args.whatsapp:
+        log.info("  WhatsApp:              %d/%d resolved", wa_resolved, wa_attempted)
+    log.info("=" * 60)
 
     if not buyers:
-        print(f"[bridge] No qualified buyer leads found. Nothing to POST.", file=sys.stderr)
+        log.info("No qualified buyer leads found. Nothing to POST.")
         result = {
             "ok": True, "total": total,
             "pre_filtered": len(pre_rejected),
@@ -461,18 +557,19 @@ def main() -> None:
     # Print qualified leads
     for lead in buyers:
         composite = lead["intent_strength"] * 0.6 + lead["urgency_score"] * 0.4
-        print(f"\n  Qualified lead:", file=sys.stderr)
-        print(f"    Name:    {lead['full_name']}", file=sys.stderr)
-        print(f"    Phone:   {lead['phone'] or 'none'}", file=sys.stderr)
-        print(f"    City:    {lead['city'] or '?'}", file=sys.stderr)
-        print(f"    Province:{lead['province'] or '?'}", file=sys.stderr)
-        print(f"    Score:   {composite:.1f} (intent={lead['intent_strength']}, urgency={lead['urgency_score']})", file=sys.stderr)
-        print(f"    Signal:  {(lead['intent_signal'] or '')[:100]}...", file=sys.stderr)
-        print(f"    Opener:  {(lead['call_script_opener'] or '')[:100]}...", file=sys.stderr)
+        log.info("")
+        log.info("  Qualified lead:")
+        log.info("    Name:     %s", lead['full_name'])
+        log.info("    Phone:    %s", lead['phone'] or 'none')
+        log.info("    City:     %s", lead['city'] or '?')
+        log.info("    Province: %s", lead['province'] or '?')
+        log.info("    Score:    %.1f (intent=%s, urgency=%s)", composite, lead['intent_strength'], lead['urgency_score'])
+        log.debug("    Signal:   %s...", (lead['intent_signal'] or '')[:100])
+        log.debug("    Opener:   %s...", (lead['call_script_opener'] or '')[:100])
 
     # ── Phase 3: POST to webhook ──
     if args.dry_run:
-        print(f"\n[bridge] --dry-run: {len(buyers)} leads would be POSTed (skipped)", file=sys.stderr)
+        log.info("--dry-run: %d leads would be POSTed (skipped)", len(buyers))
         result = {
             "ok": True, "total": total,
             "pre_filtered": len(pre_rejected),
@@ -483,11 +580,11 @@ def main() -> None:
         return
 
     batch_id = f"B2C-BATCH-{datetime.now().strftime('%Y-%m-%d')}-GUMTREE-001"
-    print(f"\n[bridge] POSTing {len(buyers)} leads as batch {batch_id}", file=sys.stderr)
+    log.info("POSTing %d leads as batch %s", len(buyers), batch_id)
 
     webhook_result = post_to_webhook(buyers, batch_id)
     if webhook_result:
-        print(f"[bridge] Webhook result: {json.dumps(webhook_result, indent=2)}", file=sys.stderr)
+        log.info("Webhook result: %s", json.dumps(webhook_result, indent=2))
         result = {
             "ok": True, "total": total,
             "pre_filtered": len(pre_rejected),
@@ -496,7 +593,7 @@ def main() -> None:
             "webhook_response": webhook_result,
         }
     else:
-        print(f"[bridge] Webhook POST failed", file=sys.stderr)
+        log.error("Webhook POST failed")
         result = {
             "ok": False, "total": total,
             "pre_filtered": len(pre_rejected),
