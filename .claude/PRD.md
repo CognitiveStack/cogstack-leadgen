@@ -1,10 +1,10 @@
 # Product Requirements Document
 # Cogstack Lead Generation Pipeline
 
-**Version:** 1.1
-**Date:** 2026-03-17
-**Status:** Active Development — Phase 2 (B2C pipeline live; WhatsApp enrichment in aging)
-**Project Directory:** `/opt/projects/cartrack-leadgen`
+**Version:** 1.2
+**Date:** 2026-04-13
+**Status:** Active Development — Phase 2 (B2C pipeline live; migrated to Desktop-wsl; Phone 3 WhatsApp pending)
+**Project Directory:** `/home/charles/cogstack-leadgen` (Desktop-wsl)
 
 ---
 
@@ -12,11 +12,11 @@
 
 Cogstack Lead Generation is an AI-powered lead discovery and qualification pipeline built for a South African vehicle tracking company (Cartrack reseller). It serves **two parallel pipelines**: B2B (fleet operators) and B2C (individual consumers).
 
-**B2B:** An autonomous scraping agent (Bigtorig AI Runtime / OpenClaw on bigtorig) discovers candidate fleet companies from public SA data sources (CIPC, eTenders, Yellow Pages, LinkedIn, SAPS Crime Stats, Road Freight Association). Each candidate is scored and surfaced in a Notion kanban for human QA before handoff to the call centre.
+**B2B:** *(Deferred — not the current focus.)* Originally planned for an autonomous scraping agent to discover candidate fleet companies from public SA data sources. On hold while B2C pipeline is validated.
 
-**B2C:** Bigtorig AI Runtime discovers individual South Africans with verifiable purchase intent (Hellopeter competitor reviews, MyBroadband forums, Reddit, OLX, Gumtree). Intent signals are scored and enriched via LLM (gpt-4o-mini via OpenRouter), then submitted to a separate Notion B2C Leads DB.
+**B2C:** The **Hermes agent** (running locally on Desktop-wsl, `/home/charles/cogstack-leadgen`) discovers individual South Africans with verifiable purchase intent (Hellopeter competitor reviews, Gumtree buyer-intent ads). Intent signals are scored and enriched via LLM (gpt-4o-mini via OpenRouter), then submitted to a separate Notion B2C Leads DB via the n8n webhook on bigtorig.
 
-**Current status:** Gumtree scraping is now live via Scrapling Fetcher (TLS fingerprint bypass, 50x faster than StealthySession). A WhatsApp name lookup service (Baileys on bigtorig) resolves phone numbers to real names before leads hit Notion. WhatsApp Business account (Phone 3) is in a 2-week aging period; temporary lookups use Phone 1 instance. Target production date: ~2026-04-03.
+**Current status:** Pipeline migrated from bigtorig/Hugo (Pi4) to Desktop-wsl/Hermes. Gumtree scraping is live via Scrapling Fetcher (TLS fingerprint bypass). Hellopeter competitor churn scraper is live. A WhatsApp name lookup service (Baileys on bigtorig) resolves phone numbers to real names. Phone 3 WhatsApp Business account aging period ended ~2026-04-03 — migration from Phone 1 (port 3457) to Phone 3 (port 3456) is pending verification. Cron schedule (`crontab-b2c.txt`) runs `b2c_run.py` twice daily on Desktop-wsl.
 
 **MVP Goal:** Deliver 10+ qualified, human-approved leads per month across both pipelines to the client's call centre, with a structured data record including prospect summary, intent signal, and a call script opener.
 
@@ -85,13 +85,15 @@ Cogstack Lead Generation is an AI-powered lead discovery and qualification pipel
 | ✅ Source reference database (6 SA data sources seeded) | Complete |
 | ✅ B2C pipeline (Hellopeter, MyBroadband, Reddit, OLX) | Live — Phase 2 |
 | ✅ B2C Notion databases (Leads, Batches) | Live |
-| ✅ B2C LLM enrichment (gpt-4o-mini via OpenRouter) | Live — first run 6 leads |
+| ✅ B2C LLM enrichment (gpt-4o-mini via OpenRouter) | Live |
 | ✅ Gumtree B2C scraper (Scrapling Fetcher) | Live — buyer-intent search, 50x faster than StealthySession |
 | ✅ Gumtree → B2C bridge (LLM classify + enrich) | Live (`scripts/gumtree_to_b2c.py`) |
 | ✅ Hellopeter competitor churn scraper | Live (`scripts/hellopeter_scraper.py`) — Netstar + Tracker Connect |
+| ✅ Unified B2C runner with cron | Live (`scripts/b2c_run.py`) — runs on Desktop-wsl |
+| ✅ Pipeline hardening (retries, logging, healthcheck) | Live (2026-03-29) |
 | ✅ WhatsApp name lookup service (Baileys v6.7) | Built + verified on bigtorig (2026-03-20) |
-| ⏳ WhatsApp Business account aging (Phone 3) | In progress — target ~2026-04-03 |
-| ❌ OpenClaw scraping logic — B2B (bigtorig) | In progress |
+| ⏳ Phone 3 WhatsApp migration | Overdue (target was 2026-04-03) — verify on bigtorig, then sed .env 3457→3456 |
+| ❌ B2B scraping logic | Deferred — not current focus |
 | ❌ Phase B auto-approval (score ≥ 7) | Deferred |
 | ❌ Phase B auto-rejection (score < 4) | Deferred |
 | ❌ WhatsApp qualification outreach (Phase B) | Deferred — after name lookup production |
@@ -128,14 +130,14 @@ Cogstack Lead Generation is an AI-powered lead discovery and qualification pipel
 | Feature | Status |
 |---------|--------|
 | ✅ n8n running on bigtorig (n8n.bigtorig.com) | Complete |
-| ✅ B2B webhook active (lead-ingestion-v2) | Complete |
-| ✅ B2C webhook active (b2c-lead-ingestion) | Complete |
+| ✅ B2C webhook active (b2c-lead-ingestion) | Complete — primary active webhook |
 | ✅ Notion workspace live (B2B + B2C databases) | Complete |
-| ✅ Bigtorig AI Runtime / OpenClaw running on bigtorig (x86_64) | Complete — gateway fixed 2026-03-15 |
+| ✅ Hermes agent running on Desktop-wsl | Complete — primary scraping host |
+| ✅ B2C pipeline cron (twice daily) | Complete — reference `crontab-b2c.txt` |
 | ✅ B2C first run completed (6 leads, 1 duplicate) | Complete |
-| ❌ B2B OpenClaw production scraping configured | Pending |
+| ⏳ Phone 3 WhatsApp production migration | Pending — aging period ended, needs QR rescan on bigtorig |
 | ❌ Claire/Paul invited to Notion workspace | Pending |
-| ❌ Gumtree via ScraperAPI | Pending — cost decision required |
+| ❌ B2B OpenClaw production scraping | Deferred |
 
 ---
 
@@ -180,12 +182,15 @@ Cogstack Lead Generation is an AI-powered lead discovery and qualification pipel
 ### Architecture Overview
 
 ```
-Bigtorig AI Runtime / OpenClaw (bigtorig x86_64 VPS, Tailscale)
-    │                           ↑
-    │                    Pi4 (ARM64) — Hugo agent, WhatsApp channel only
+Hermes Agent (Desktop-wsl, /home/charles/cogstack-leadgen)
+    │   scripts/b2c_run.py — orchestrates Gumtree + Hellopeter
+    │   scripts/gumtree_scrapling.py — Scrapling Fetcher, TLS bypass
+    │   scripts/hellopeter_scraper.py — competitor churn leads
+    │   scripts/gumtree_to_b2c.py — LLM classify + WhatsApp enrich
+    │   WhatsApp lookup → bigtorig:3456 (Phone 3) or 3457 (Phone 1 temp)
     │
-    │  POST /webhook/lead-ingestion-v2  (B2B)
-    │  POST /webhook/b2c-lead-ingestion (B2C)
+    │  POST /webhook/b2c-lead-ingestion (B2C — active)
+    │  POST /webhook/lead-ingestion-v2  (B2B — inactive/deferred)
     │  Authorization: Bearer <token>
     │  Content-Type: application/json
     │  Body: { batch_id, [segment: "B2C"], leads[] }
@@ -232,30 +237,37 @@ Call Centre (Paul's team)
 ### Directory Structure
 
 ```
-cogstack-leadgen/
-├── .config/
-│   └── PRD.md                          # This document
+cogstack-leadgen/          # /home/charles/cogstack-leadgen (Desktop-wsl, Hermes agent)
 ├── .claude/
+│   ├── PRD.md                          # This document
 │   ├── commands/                       # Claude Code skill commands
 │   └── docs/
 │       ├── SETUP_GUIDE.md              # Step-by-step Notion setup
-│       └── SESSION_SUMMARY-feb18.md    # Previous session notes
-├── main.py                             # Entry point (placeholder — to be implemented)
-├── create_notion_databases.py          # One-time Notion schema setup
-├── test_webhook.py                     # End-to-end pipeline test
-├── n8n_code_node.js                    # Active n8n Code node (paste into workflow)
-├── n8n_lead_ingestion_workflow.json    # v1 workflow export (deprecated)
-├── notion_config.json                  # Database IDs (committed for reference)
+│       └── SESSION_SUMMARY-*.md        # Session notes
+├── .agents/plans/                      # Feature implementation plans
+├── scripts/
+│   ├── b2c_run.py                      # Unified B2C runner (cron entrypoint)
+│   ├── gumtree_scrapling.py            # Gumtree scraper (Scrapling Fetcher)
+│   ├── gumtree_to_b2c.py              # Bridge: Gumtree → LLM → WhatsApp → POST
+│   ├── hellopeter_scraper.py           # Hellopeter competitor churn scraper
+│   └── b2c_healthcheck.py             # Pre-run dependency health check
+├── main.py                             # Entry point (placeholder)
+├── create_notion_databases.py          # One-time B2B Notion DB setup
+├── create_b2c_database.py              # One-time B2C Notion DB setup
+├── n8n_b2c_code_node.js               # Active B2C n8n Code node
+├── n8n_code_node.js                    # B2B n8n Code node (inactive/deferred)
+├── crontab-b2c.txt                     # Cron schedule reference (twice daily)
+├── notion_config.json                  # Database IDs (committed)
+├── memory/                             # Scraped lead snapshots (gitignored JSON)
+├── logs/                               # Runtime logs (gitignored)
 ├── pyproject.toml                      # Python project config (uv)
-├── uv.lock                             # Dependency lockfile
-├── .python-version                     # Python 3.13
 └── .env                                # Secrets (not committed)
 ```
 
 ### Key Design Patterns
 
 - **Code-node-as-backend:** All ingestion logic lives in a single n8n JavaScript Code node rather than a Python service, avoiding the need to run and maintain a separate API server. n8n's `$http.request()` is used directly against the Notion API.
-- **Payload-carries-enrichment:** OpenClaw computes scores and generates enrichment text (prospect summary, fleet assessment, call script) before posting. The n8n Code node is a thin persistence layer, not a processing layer. This keeps the Code node simple and puts intelligence close to the data source.
+- **Payload-carries-enrichment:** The Hermes agent (Desktop-wsl) computes scores and generates enrichment text (intent signal, call script opener) via LLM before posting. The n8n Code node is a thin persistence layer, not a processing layer. This keeps the Code node simple and puts intelligence close to the data source.
 - **Dedup-on-write:** Before creating a lead record, the Code node queries Notion for existing records with the same company name. This prevents duplicates without requiring a separate dedup service or database.
 - **Batch-as-audit-trail:** Every ingestion run creates a Batches DB record that tracks counts and errors. This provides operational visibility without external logging infrastructure.
 - **Status-machine QA:** Lead status follows a defined state machine enforced by Notion's select property. Invalid transitions are prevented by the UI.
@@ -764,21 +776,19 @@ Gumtree scraping now works via Scrapling Fetcher (`scripts/gumtree_scrapling.py`
 | Service | URL | Notes |
 |---------|-----|-------|
 | n8n | https://n8n.bigtorig.com | bigtorig VPS, Docker, behind Caddy |
-| B2B Webhook | https://n8n.bigtorig.com/webhook/lead-ingestion-v2 | Active |
-| B2C Webhook | https://n8n.bigtorig.com/webhook/b2c-lead-ingestion | Active |
+| B2C Webhook | https://n8n.bigtorig.com/webhook/b2c-lead-ingestion | Active — primary pipeline |
+| B2B Webhook | https://n8n.bigtorig.com/webhook/lead-ingestion-v2 | Inactive — B2B deferred |
 | Notion API | https://api.notion.com/v1 | v2022-06-28 |
-| Bigtorig AI Runtime / OpenClaw | bigtorig x86_64 VPS (Tailscale) | B2C lead gen scripts |
-| Hugo / OpenClaw | Pi4 ARM64 (Tailscale) | WhatsApp channel only (+27639842638) |
+| Hermes Agent | Desktop-wsl `/home/charles/cogstack-leadgen` | B2C scraping + enrichment (primary host) |
+| WhatsApp lookup (Phone 3 — prod) | bigtorig port 3456 | Baileys, +27631650794 — pending migration |
+| WhatsApp lookup (Phone 1 — temp) | bigtorig port 3457 | 278 contacts cached — delete after Phone 3 verified |
+| Hugo / OpenClaw | Pi4 ARM64 (Tailscale) | Decommissioned from B2C role; WhatsApp channel only (+27639842638) |
 
-### D. Immediate Next Steps (As of 2026-02-19)
+### D. Immediate Next Steps (As of 2026-04-13)
 
-1. Open n8n at n8n.bigtorig.com → lead-ingestion-v2 workflow
-2. Open Code node → paste contents of `n8n_code_node.js`
-3. Update `NOTION_API_KEY` constant in the Code node
-4. Save and activate the workflow
-5. Run: `export WEBHOOK_URL=... && export WEBHOOK_TOKEN=... && uv run test_webhook.py`
-6. Verify 3 leads appear in Notion Leads DB with Status = "Pending QA"
-7. Follow SETUP_GUIDE.md to add formula and rollup properties in Notion UI
-8. Invite Claire (Editor) and Paul (Commenter) to Notion workspace
-9. Configure OpenClaw with production webhook URL and bearer token
-10. Monitor first real batch via Batches DB view
+1. **Phone 3 WhatsApp migration** — On bigtorig: `cd /opt/projects/whatsapp-lookup && rm -rf auth_info/ && node lookup.js` → scan QR with Phone 3. Test: `curl -s -X POST http://localhost:3456/lookup -H 'Content-Type: application/json' -d '{"phone":"+27XXX"}' | jq .`
+2. **Update .env on Desktop-wsl** — `sed -i 's|WHATSAPP_LOOKUP_URL=http://127.0.0.1:3457|WHATSAPP_LOOKUP_URL=http://127.0.0.1:3456|' .env`
+3. **Decommission Phone 1 instance** — `rm -rf /opt/projects/whatsapp-lookup-personal/` on bigtorig
+4. **Install cron on Desktop-wsl** — `crontab -e`, paste from `crontab-b2c.txt`
+5. **Invite Claire and Paul to Notion workspace**
+6. Monitor B2C runs via `logs/b2c-run-YYYY-MM-DD.json` and Notion B2C Batches DB
