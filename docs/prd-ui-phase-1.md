@@ -172,7 +172,10 @@ cogstack-leadgen/
 ├── scrapers/                     # existing scraper scripts (keep)
 ├── pipelines/                    # existing orchestration (keep)
 ├── docker-compose.yml            # adds ui service
-├── PRD.md                        # this file
+├── PRD.md                        # pointer to active PRDs
+├── docs/
+│   ├── prd-ui-phase-1.md      # this file
+│   └── prd-leadgen-original.md
 └── README.md
 ```
 
@@ -285,7 +288,7 @@ This PRD is designed to be consumed by `/piv`:
 ```bash
 cd ~/cogstack-leadgen
 # in Zed agent panel:
-/piv UI redesign Phase 1 — read-only dashboard per PRD.md
+/piv UI redesign Phase 1 — read-only dashboard per docs/prd-ui-phase-1.md
 ```
 
 The `/piv` command will:
