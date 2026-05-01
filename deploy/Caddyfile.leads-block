@@ -1,0 +1,22 @@
+# CogStack Leadgen — operations console
+# Snippet for /opt/infra/local-ai-packaged/Caddyfile on bigtorig.
+# DO NOT apply automatically — Charles adds this block manually.
+#
+# Prerequisites:
+#   1. cogstack-ui container is running on caddy-shared network
+#      (cd /opt/services/cogstack-leadgen && docker compose up -d)
+#   2. Cloudflare DNS: leads.bigtorig.com → bigtorig IP (proxied)
+#   3. Generate bcrypt hash for Claire's password:
+#      docker run --rm caddy:alpine caddy hash-password
+#      (or: caddy hash-password on bigtorig if caddy is installed)
+#   4. Replace <bcrypt-hash> below with the output of step 3
+
+leads.bigtorig.com {
+    encode zstd gzip
+
+    basic_auth {
+        claire <bcrypt-hash>
+    }
+
+    reverse_proxy cogstack-ui:8000
+}

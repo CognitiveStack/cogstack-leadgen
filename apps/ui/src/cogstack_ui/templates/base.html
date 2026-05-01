@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}CogStack Leadgen{% endblock %}</title>
+    <!-- Tailwind Play CDN — deliberate Phase 1 choice (no build step).
+         Switch to compiled Tailwind before production. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+</head>
+<body class="h-full bg-gray-50 text-gray-900">
+
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center h-14 gap-6">
+                <span class="font-semibold text-gray-900">CogStack Leadgen</span>
+                <a href="/" class="text-sm text-gray-600 hover:text-gray-900">Dashboard</a>
+                <a href="/prospects" class="text-sm text-gray-600 hover:text-gray-900">Prospects</a>
+                <a href="/outreach" class="text-sm text-gray-600 hover:text-gray-900">Outreach</a>
+                <a href="/ingest" class="text-sm text-gray-600 hover:text-gray-900">Ingest</a>
+                <a href="/batches" class="text-sm text-gray-600 hover:text-gray-900">Batches</a>
+                <a href="/sources" class="text-sm text-gray-600 hover:text-gray-900">Sources</a>
+                <a href="/help" class="text-sm text-gray-600 hover:text-gray-900">Help</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+</html>

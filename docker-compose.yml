@@ -1,0 +1,15 @@
+services:
+  cogstack-ui:
+    build:
+      context: apps/ui
+      dockerfile: Dockerfile
+    container_name: cogstack-ui
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - caddy-shared
+
+networks:
+  caddy-shared:
+    external: true

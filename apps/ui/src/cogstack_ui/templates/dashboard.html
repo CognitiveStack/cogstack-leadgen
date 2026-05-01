@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">Dashboard</h1>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <p class="text-sm font-medium text-gray-500 mb-1">B2C Prospects</p>
+    <p class="text-3xl font-bold text-gray-900">{{ counts.b2c_leads }}</p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <p class="text-sm font-medium text-gray-500 mb-1">B2B Prospects</p>
+    <p class="text-3xl font-bold text-gray-900">{{ counts.b2b_leads }}</p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <p class="text-sm font-medium text-gray-500 mb-1">Claire's Prospects</p>
+    <p class="text-3xl font-bold text-gray-900">{{ counts.claire_prospects }}</p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <p class="text-sm font-medium text-gray-500 mb-1">Ingest Batches (B2C)</p>
+    <p class="text-3xl font-bold text-gray-900">{{ counts.b2c_batches }}</p>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-5">
+    <p class="text-sm font-medium text-gray-500 mb-1">Sources</p>
+    <p class="text-3xl font-bold text-gray-900">{{ counts.sources }}</p>
+  </div>
+
+</div>
+{% endblock %}
