@@ -78,8 +78,50 @@ where the daily decisions and actions of the workflow happen.
 
 - Not multi-tenant (single-client, Cartrack-specific assumptions live in config)
 
-- Not a scraper (scraping continues to run on desktop-wsl on existing schedule)
 
+### Repository structure
+
+
+The cogstack-leadgen repository hosts the entire leadgen system, deployed
+
+differently on different machines:
+
+
+- **desktop-wsl**: runs the scrapers (`gumtree_*`, `hellopeter_*`, etc.) and
+
+  the manual orchestration scripts (`b2c_run.py`, `whatsapp_outreach.py`).
+
+  These are Python scripts run from the command line or claude-code, not the
+
+  UI.
+
+
+
+- **bigtorig**: runs the operations console UI (this PRD), n8n, Baileys, and
+
+  the broader infrastructure stack. The UI deployment is the new work
+
+  introduced by this PRD.
+
+
+
+Both machines clone from the same git remote. They share helper code (Notion
+
+client, schema introspection, Pydantic models) and a single source of truth
+
+for the data model. The scrapers and the UI evolve in the same repo because
+
+they describe the same system; they just have different runtime homes.
+
+
+
+Phase 1 of the UI does not include UI-initiated scraping. That capability is
+
+explicitly Phase 2+ — the UI may eventually grow a "trigger scrape" button
+
+that talks back to desktop-wsl (or to a future bigtorig-hosted scraper). The
+
+architecture does not preclude this; we just don't ship it in Phase 1.
 
 
 ### Core nomenclature
@@ -101,7 +143,6 @@ The UI introduces and standardizes on this distinction:
 | **Batch** | A group of prospects ingested or processed together (an Excel upload, a scraping run, a WhatsApp send batch) |
 
 | **Source** | Where a prospect originated (HelloPeter, Gumtree, Claire's submission, etc.) |
-
 | **Outreach** | The WhatsApp message sent to qualify a prospect into a lead |
 
 
