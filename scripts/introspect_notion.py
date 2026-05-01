@@ -35,7 +35,8 @@ DATABASES: dict[str, tuple[str, str]] = {
     "b2c_leads":   ("B2CLeads",   "32089024-cd3d-812e-a6c6-d8e21d9126b3"),
     "b2c_batches": ("B2CBatches", "32089024-cd3d-81a7-8691-ca999aa1494f"),
     "b2b_leads":   ("B2BLeads",   "30b89024-cd3d-810a-bb28-e46825320802"),
-    "sources":     ("Sources",    "30b89024-cd3d-81b1-ab3a-c900965b5d64"),
+    "sources":          ("Sources",         "30b89024-cd3d-81b1-ab3a-c900965b5d64"),
+    "claire_prospects": ("ClaireProspects", "34189024-cd3d-8108-bd69-ce41ebfa2eb2"),
 }
 
 
