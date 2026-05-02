@@ -1,0 +1,7 @@
+{% if error %}
+<span class="text-sm text-amber-600">{{ message }}</span>
+{% elif "not on WhatsApp" in message %}
+<span class="text-sm text-gray-500">{{ message }}</span>
+{% else %}
+<span class="text-sm text-green-700 font-medium">{{ message }}</span>
+{% endif %}

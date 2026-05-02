@@ -1,0 +1,12 @@
+{% if already %}
+<span class="text-sm text-gray-500">
+    Already sent{% if sent_at %} on {{ sent_at[:10] }}{% endif %}{% if dry_run %} (dry run){% endif %}
+</span>
+{% elif success %}
+<span class="text-sm text-green-700 font-medium">
+    ✓ Sent{% if dry_run %} (dry run — logged, not delivered){% endif %}
+    at {{ sent_at[:19] | replace("T", " ") }} UTC
+</span>
+{% else %}
+<span class="text-sm text-red-600">Send failed: {{ error }}</span>
+{% endif %}

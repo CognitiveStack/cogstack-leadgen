@@ -46,3 +46,17 @@ class NotionClient:
         resp = await self._client.get(f"/pages/{page_id}")
         resp.raise_for_status()
         return resp.json()
+
+    async def patch_page(self, page_id: str, properties: dict) -> dict:
+        assert self._client is not None, "Use NotionClient as an async context manager"
+        resp = await self._client.patch(
+            f"/pages/{page_id}", json={"properties": properties}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_page(self, payload: dict) -> dict:
+        assert self._client is not None, "Use NotionClient as an async context manager"
+        resp = await self._client.post("/pages", json=payload)
+        resp.raise_for_status()
+        return resp.json()

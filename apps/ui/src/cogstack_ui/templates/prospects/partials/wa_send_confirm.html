@@ -1,0 +1,25 @@
+<div class="rounded border border-amber-200 bg-amber-50 p-4 space-y-3 text-sm">
+    <p class="font-medium">Send this message to <strong>{{ name }}</strong> ({{ phone }})?</p>
+    <pre class="whitespace-pre-wrap rounded bg-white border border-gray-200 px-3 py-2 text-xs font-mono">{{ message }}</pre>
+    {% if dry_run %}
+    <p class="text-xs text-amber-700">Dry-run mode — message will be logged, not delivered.</p>
+    {% endif %}
+    <div class="flex gap-2">
+        <form hx-post="/prospects/{{ page_id }}/send"
+              hx-target="#wa-send-panel"
+              hx-swap="innerHTML">
+            <input type="hidden" name="phone" value="{{ phone }}">
+            <input type="hidden" name="name" value="{{ name }}">
+            <input type="hidden" name="business" value="{{ business }}">
+            <button type="submit"
+                    class="rounded bg-green-600 px-4 py-1.5 text-white hover:bg-green-700">
+                Confirm send
+            </button>
+        </form>
+        <button type="button"
+                onclick="document.getElementById('wa-send-panel').innerHTML=''"
+                class="rounded border border-gray-300 px-4 py-1.5 text-gray-600 hover:bg-gray-50">
+            Cancel
+        </button>
+    </div>
+</div>

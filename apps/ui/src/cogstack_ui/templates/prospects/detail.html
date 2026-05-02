@@ -29,6 +29,86 @@
         </a>
     </div>
 
+    <!-- Actions -->
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div class="border-b border-gray-100 px-4 py-3">
+            <h2 class="text-sm font-semibold text-gray-700">Actions</h2>
+        </div>
+        <div class="divide-y divide-gray-100">
+
+            <!-- WhatsApp Lookup -->
+            <div class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">WhatsApp Lookup</span>
+                    {% if detail.row.phone %}
+                    <form hx-post="/prospects/{{ detail.row.page_id }}/whatsapp-lookup"
+                          hx-target="#wa-lookup-result"
+                          hx-swap="innerHTML">
+                        <input type="hidden" name="phone" value="{{ detail.row.phone }}">
+                        <button type="submit"
+                                class="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                            Look up
+                        </button>
+                    </form>
+                    {% else %}
+                    <span class="text-sm text-gray-400">No phone</span>
+                    {% endif %}
+                </div>
+                <div id="wa-lookup-result" class="mt-2"></div>
+            </div>
+
+            <!-- Send WhatsApp Outreach -->
+            <div class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Send WhatsApp Outreach</span>
+                    {% if outreach_record %}
+                    <span class="text-sm text-gray-400">
+                        Already sent{% if outreach_record.sent_at %} {{ outreach_record.sent_at[:10] }}{% endif %}
+                    </span>
+                    {% elif not detail.row.phone %}
+                    <span class="text-sm text-gray-400">No phone</span>
+                    {% else %}
+                    <form hx-post="/prospects/{{ detail.row.page_id }}/send-confirm"
+                          hx-target="#wa-send-panel"
+                          hx-swap="innerHTML">
+                        <input type="hidden" name="phone" value="{{ detail.row.phone }}">
+                        <input type="hidden" name="name" value="{{ detail.row.name }}">
+                        <input type="hidden" name="business" value="{{ detail.properties.get('Business') or detail.properties.get('Company Name') or '' }}">
+                        <button type="submit"
+                                class="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700">
+                            Send outreach
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                <div id="wa-send-panel" class="mt-2"></div>
+            </div>
+
+            <!-- Mark Sent to Cartrack -->
+            <div class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Mark Sent to Cartrack</span>
+                    {% if cartrack_done %}
+                    <span class="text-sm text-gray-400">Already marked</span>
+                    {% else %}
+                    <form hx-post="/prospects/{{ detail.row.page_id }}/cartrack-confirm"
+                          hx-target="#cartrack-panel"
+                          hx-swap="innerHTML">
+                        <input type="hidden" name="name" value="{{ detail.row.name }}">
+                        <input type="hidden" name="db_name" value="{{ detail.row.db_name }}">
+                        <button type="submit"
+                                class="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700">
+                            Mark sent
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                <div id="cartrack-panel" class="mt-2"></div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Property grid -->
     <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
         <dl class="divide-y divide-gray-100">

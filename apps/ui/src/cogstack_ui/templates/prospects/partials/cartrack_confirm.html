@@ -1,0 +1,19 @@
+<div class="rounded border border-amber-200 bg-amber-50 p-4 space-y-3 text-sm">
+    <p class="font-medium">Mark <strong>{{ name }}</strong> as sent to Cartrack?</p>
+    <div class="flex gap-2">
+        <form hx-post="/prospects/{{ page_id }}/cartrack"
+              hx-target="#cartrack-panel"
+              hx-swap="innerHTML">
+            <input type="hidden" name="db_name" value="{{ db_name }}">
+            <button type="submit"
+                    class="rounded bg-indigo-600 px-4 py-1.5 text-white hover:bg-indigo-700">
+                Confirm
+            </button>
+        </form>
+        <button type="button"
+                onclick="document.getElementById('cartrack-panel').innerHTML=''"
+                class="rounded border border-gray-300 px-4 py-1.5 text-gray-600 hover:bg-gray-50">
+            Cancel
+        </button>
+    </div>
+</div>

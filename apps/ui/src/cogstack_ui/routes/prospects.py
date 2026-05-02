@@ -14,6 +14,7 @@ from cogstack_ui.notion.queries import (
     list_prospects,
 )
 from cogstack_ui.utils.phone import normalise_phone
+from cogstack_ui.whatsapp.state import get_sent_record, load_state
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,22 @@ async def prospect_detail(request: Request, page_id: str):
     if detail is None:
         raise HTTPException(status_code=404, detail="Prospect not found")
 
+    # Outreach state — check shared outreach-state.json for idempotency display
+    canonical_phone = normalise_phone(detail.row.phone or "") if detail.row.phone else None
+    outreach_record = get_sent_record(load_state(), canonical_phone) if canonical_phone else None
+
+    # Cartrack state — read from Notion properties already fetched above
+    if detail.row.db_name == "Claire":
+        cartrack_done = detail.properties.get("Submitted to Pipeline") == "Yes"
+    else:
+        cartrack_done = detail.properties.get("Status") == "Sent to Call Centre"
+
     return templates.TemplateResponse(
-        request, "prospects/detail.html", {"detail": detail}
+        request,
+        "prospects/detail.html",
+        {
+            "detail": detail,
+            "outreach_record": outreach_record,
+            "cartrack_done": cartrack_done,
+        },
     )
