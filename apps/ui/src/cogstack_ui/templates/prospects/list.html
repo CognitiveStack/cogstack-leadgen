@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Prospects — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <h1 class="text-xl font-semibold">Prospects</h1>
+
+    <!-- Phone search -->
+    <form method="get" action="/prospects" class="flex gap-2">
+        <input
+            type="text"
+            name="q"
+            value="{{ q }}"
+            placeholder="Search by phone (any format)"
+            class="w-72 rounded border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <button type="submit"
+                class="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700">
+            Search
+        </button>
+        {% if q %}
+        <a href="/prospects"
+           class="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            Clear
+        </a>
+        {% endif %}
+    </form>
+
+    <!-- Error / no-results states -->
+    {% if phone_error %}
+    <p class="text-sm text-red-600">{{ phone_error }}</p>
+
+    {% elif q and not rows %}
+    <p class="text-sm text-gray-500">No prospects with phone {{ canonical_phone }}.</p>
+
+    {% else %}
+
+    <!-- Results table -->
+    {% if rows %}
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Name</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">DB</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Phone</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Status</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Date</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in rows %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <a href="/prospects/{{ row.page_id }}"
+                           class="text-indigo-600 hover:underline">
+                            {{ row.name }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium
+                            {%- if row.db_name == 'B2C' %} bg-blue-100 text-blue-700
+                            {%- elif row.db_name == 'B2B' %} bg-green-100 text-green-700
+                            {%- else %} bg-purple-100 text-purple-700
+                            {%- endif %}">
+                            {{ row.db_name }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">{{ row.phone or "—" }}</td>
+                    <td class="px-4 py-3 text-gray-600">{{ row.status or "—" }}</td>
+                    <td class="px-4 py-3 text-gray-400">{{ row.date_str or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Load more stub — cursor-based pagination is a Phase 2 concern -->
+    <div class="flex justify-center pt-2">
+        <button disabled
+                class="cursor-not-allowed rounded border border-gray-200 bg-gray-50 px-6 py-2 text-sm text-gray-400">
+            Load more — pagination coming in Phase 2
+        </button>
+    </div>
+
+    {% else %}
+    <p class="text-sm text-gray-400">No prospects found.</p>
+    {% endif %}
+
+    {% endif %}
+
+</div>
+{% endblock %}

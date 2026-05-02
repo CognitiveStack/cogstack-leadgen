@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.row.name }} — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-start justify-between">
+        <div>
+            <a href="/prospects" class="text-sm text-gray-400 hover:text-gray-600">← Prospects</a>
+            <h1 class="mt-1 text-xl font-semibold">{{ detail.row.name }}</h1>
+            <div class="mt-1 flex items-center gap-3">
+                <span class="inline-block rounded px-2 py-0.5 text-xs font-medium
+                    {%- if detail.row.db_name == 'B2C' %} bg-blue-100 text-blue-700
+                    {%- elif detail.row.db_name == 'B2B' %} bg-green-100 text-green-700
+                    {%- else %} bg-purple-100 text-purple-700
+                    {%- endif %}">
+                    {{ detail.row.db_name }}
+                </span>
+                {% if detail.row.status %}
+                <span class="text-sm text-gray-500">{{ detail.row.status }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <a href="{{ detail.notion_url }}" target="_blank" rel="noopener"
+           class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            Open in Notion ↗
+        </a>
+    </div>
+
+    <!-- Property grid -->
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <dl class="divide-y divide-gray-100">
+            {% for name, value in detail.properties.items() %}
+            {% if value is not none %}
+            <div class="grid grid-cols-3 gap-4 px-4 py-3 text-sm">
+                <dt class="font-medium text-gray-500">{{ name }}</dt>
+                <dd class="col-span-2 break-all text-gray-900">{{ value }}</dd>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </dl>
+    </div>
+
+</div>
+{% endblock %}

@@ -40,3 +40,9 @@ class NotionClient:
         resp = await self._client.post(f"/databases/{db_id}/query", json=payload)
         resp.raise_for_status()
         return resp.json()
+
+    async def get_page(self, page_id: str) -> dict:
+        assert self._client is not None, "Use NotionClient as an async context manager"
+        resp = await self._client.get(f"/pages/{page_id}")
+        resp.raise_for_status()
+        return resp.json()
