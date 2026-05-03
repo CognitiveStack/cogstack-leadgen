@@ -21,6 +21,10 @@ def build_message(name: str, expressed_interest: str) -> str:
 
     Future personalisation (e.g. motivation) can be added as
     `motivation: str = ""` when it lands in the message body.
+
+    TODO(tech-debt): scripts/whatsapp_outreach.py's build_message() accepts
+    a `motivation` parameter (unused in the template body). Keep the two
+    signatures in sync if the template gains a motivation line.
     """
     interest = (expressed_interest or "").strip()
     if interest:

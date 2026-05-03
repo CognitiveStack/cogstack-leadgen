@@ -14,7 +14,8 @@ from cogstack_ui.notion.queries import (
     list_prospects,
 )
 from cogstack_ui.utils.phone import normalise_phone
-from cogstack_ui.whatsapp.state import get_sent_record, load_state
+from cogstack_ui.whatsapp.eligibility import is_eligible
+from cogstack_ui.whatsapp.state import get_sent_record, load_state, load_state_strict
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +51,35 @@ async def prospects_list(request: Request, q: str | None = None):
         except Exception:
             logger.exception("list_prospects failed")
 
+    # Eligibility — load state once, build sent_phones set, evaluate per row.
+    # Drives checkbox disabled state; Gate 5.2 re-validates server-side on submit.
+    # Fail-closed: if state is unreadable, disable ALL selection rather than
+    # risk re-contacting phones we've already messaged (40x blast radius).
+    state_load_failed = False
+    sent_phones: set[str] = set()
+    try:
+        # Defensive re-normalisation: protects dedup from any historical
+        # state.json entries that may not be in canonical form.
+        sent_phones = {
+            normalise_phone(e["phone"])
+            for e in load_state_strict()
+            if e.get("phone")
+        }
+    except Exception:
+        logger.exception("load_state failed — disabling selection")
+        state_load_failed = True
+
+    if state_load_failed:
+        prospect_rows = [(row, False, "State unavailable") for row in rows]
+    else:
+        prospect_rows = [(row, *is_eligible(row, sent_phones)) for row in rows]
+
     return templates.TemplateResponse(
         request,
         "prospects/list.html",
         {
-            "rows": rows,
+            "prospect_rows": prospect_rows,
+            "state_load_failed": state_load_failed,
             "q": q,
             "phone_error": phone_error,
             "canonical_phone": canonical_phone,

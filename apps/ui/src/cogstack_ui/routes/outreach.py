@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from cogstack_ui import config
@@ -178,6 +179,22 @@ async def wa_send(
             "dry_run": send_result.dry_run,
         },
     )
+
+
+# ── Bulk outreach preview — stub (Gate 5.2 replaces with real preview page) ───
+
+
+@router.post("/outreach/preview")
+async def outreach_preview(
+    selected_ids: list[str] = Form(default=[]),
+):
+    """Gate 5.1 stub — echoes received IDs as JSON.
+
+    Gate 5.2 will replace this with a real preview page (HTML response)
+    showing message previews for each selected prospect and a Confirm Send
+    button. Server-side cap enforcement (max 40) will also be added in 5.2.
+    """
+    return JSONResponse({"received_ids": selected_ids, "count": len(selected_ids)})
 
 
 # ── Cartrack — Step A: confirmation panel ─────────────────────────────────────

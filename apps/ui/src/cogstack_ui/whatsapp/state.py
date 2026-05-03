@@ -24,7 +24,7 @@ _write_lock = asyncio.Lock()
 
 
 def load_state() -> list[dict]:
-    """Read outreach-state.json. Returns [] if the file doesn't exist."""
+    """Read outreach-state.json. Returns [] if the file doesn't exist or is corrupt."""
     if not _STATE_FILE.exists():
         return []
     try:
@@ -32,6 +32,19 @@ def load_state() -> list[dict]:
     except (json.JSONDecodeError, OSError):
         logger.exception("Failed to read state file %s", _STATE_FILE)
         return []
+
+
+def load_state_strict() -> list[dict]:
+    """Read outreach-state.json. Returns [] if file doesn't exist (normal fresh state).
+    Raises json.JSONDecodeError or OSError if the file exists but cannot be parsed.
+
+    Use this in contexts where a corrupt/unreadable state file must be treated
+    as a failure rather than silently treated as empty (e.g. bulk outreach
+    eligibility, where a false empty means re-contacting already-sent phones).
+    """
+    if not _STATE_FILE.exists():
+        return []
+    return json.loads(_STATE_FILE.read_text(encoding="utf-8"))
 
 
 def save_state(state: list[dict]) -> None:

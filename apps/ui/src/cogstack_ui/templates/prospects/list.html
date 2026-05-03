@@ -33,58 +33,130 @@
     {% if phone_error %}
     <p class="text-sm text-red-600">{{ phone_error }}</p>
 
-    {% elif q and not rows %}
+    {% elif q and not prospect_rows %}
     <p class="text-sm text-gray-500">No prospects with phone {{ canonical_phone }}.</p>
 
     {% else %}
 
-    <!-- Results table -->
-    {% if rows %}
-    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table class="min-w-full divide-y divide-gray-200 text-sm">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-4 py-3 text-left font-medium text-gray-500">Name</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-500">DB</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-500">Phone</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-500">Status</th>
-                    <th class="px-4 py-3 text-left font-medium text-gray-500">Date</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100">
-                {% for row in rows %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3">
-                        <a href="/prospects/{{ row.page_id }}"
-                           class="text-indigo-600 hover:underline">
-                            {{ row.name }}
-                        </a>
-                    </td>
-                    <td class="px-4 py-3">
-                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium
-                            {%- if row.db_name == 'B2C' %} bg-blue-100 text-blue-700
-                            {%- elif row.db_name == 'B2B' %} bg-green-100 text-green-700
-                            {%- else %} bg-purple-100 text-purple-700
-                            {%- endif %}">
-                            {{ row.db_name }}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-gray-600">{{ row.phone or "—" }}</td>
-                    <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
-                    <td class="px-4 py-3 text-gray-400">{{ row.date_str or "—" }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <!-- Results table + bulk send form -->
+    {% if prospect_rows %}
 
-    <!-- Load more stub — cursor-based pagination is a Phase 2 concern -->
-    <div class="flex justify-center pt-2">
-        <button disabled
-                class="cursor-not-allowed rounded border border-gray-200 bg-gray-50 px-6 py-2 text-sm text-gray-400">
-            Load more — pagination coming in Phase 2
-        </button>
+    {% if state_load_failed %}
+    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <strong>Outreach state unavailable.</strong>
+        Selection disabled — cannot verify which prospects have already
+        been contacted. Check logs and retry.
     </div>
+    {% endif %}
+
+    <form id="bulk-form" method="post" action="/outreach/preview"
+          hx-post="/outreach/preview" hx-target="#preview-response" hx-swap="innerHTML">
+
+        <!-- Sticky selection bar -->
+        <div class="sticky top-0 z-10 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2 shadow-sm">
+            <span class="text-sm text-gray-600">
+                <span id="selection-count">0</span> / 40 selected
+            </span>
+            <button id="bulk-submit" type="submit" disabled
+                    {% if state_load_failed %}data-state-failed{% endif %}
+                    class="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40">
+                Send to 0 selected
+            </button>
+        </div>
+
+        <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="w-8 px-4 py-3"></th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-500">Name</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-500">DB</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-500">Phone</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-500">Status</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-500">Date</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for row, eligible, reason in prospect_rows %}
+                    <tr class="hover:bg-gray-50{% if not eligible %} opacity-60{% endif %}">
+                        <td class="px-4 py-3">
+                            {% if eligible %}
+                            <input type="checkbox" name="selected_ids" value="{{ row.page_id }}"
+                                   class="rounded border-gray-300 text-green-600">
+                            {% else %}
+                            <input type="checkbox" disabled data-ineligible
+                                   title="{{ reason }}"
+                                   class="cursor-not-allowed rounded border-gray-200 opacity-40">
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <a href="/prospects/{{ row.page_id }}"
+                               class="text-indigo-600 hover:underline">
+                                {{ row.name }}
+                            </a>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-block rounded px-2 py-0.5 text-xs font-medium
+                                {%- if row.db_name == 'B2C' %} bg-blue-100 text-blue-700
+                                {%- elif row.db_name == 'B2B' %} bg-green-100 text-green-700
+                                {%- else %} bg-purple-100 text-purple-700
+                                {%- endif %}">
+                                {{ row.db_name }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-gray-600">{{ row.phone or "—" }}</td>
+                        <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
+                        <td class="px-4 py-3 text-gray-400">{{ row.date_str or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Load more stub — cursor-based pagination is a Phase 2 concern -->
+        <div class="flex justify-center pt-2">
+            <button disabled
+                    class="cursor-not-allowed rounded border border-gray-200 bg-gray-50 px-6 py-2 text-sm text-gray-400">
+                Load more — pagination coming in Phase 2
+            </button>
+        </div>
+
+    </form>
+
+    <!-- Stub response target — Gate 5.2 replaces with real preview page -->
+    <div id="preview-response"></div>
+
+    <script>
+    (function () {
+        const CAP    = 40;
+        const form   = document.getElementById('bulk-form');
+        const countEl = document.getElementById('selection-count');
+        const btn    = document.getElementById('bulk-submit');
+
+        function update() {
+            const checked = form.querySelectorAll(
+                'input[type="checkbox"]:checked'
+            ).length;
+
+            countEl.textContent = checked;
+            btn.disabled = checked === 0 || btn.hasAttribute('data-state-failed');
+            btn.textContent = checked === 0
+                ? 'Send to 0 selected'
+                : 'Send to ' + checked + ' selected';
+
+            // At cap: disable all unchecked eligible checkboxes.
+            // data-ineligible checkboxes are server-disabled — never modify them.
+            form.querySelectorAll(
+                'input[type="checkbox"]:not([data-ineligible])'
+            ).forEach(function (cb) {
+                if (!cb.checked) cb.disabled = checked >= CAP;
+            });
+        }
+
+        form.addEventListener('change', update);
+        update();
+    })();
+    </script>
 
     {% else %}
     <p class="text-sm text-gray-400">No prospects found.</p>
