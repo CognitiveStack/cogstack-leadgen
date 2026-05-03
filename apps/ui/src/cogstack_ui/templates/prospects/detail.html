@@ -1,3 +1,4 @@
+{% from "_macros.html" import status_badge %}
 {% extends "base.html" %}
 
 {% block title %}{{ detail.row.name }} — CogStack Leadgen{% endblock %}
@@ -18,9 +19,7 @@
                     {%- endif %}">
                     {{ detail.row.db_name }}
                 </span>
-                {% if detail.row.status %}
-                <span class="text-sm text-gray-500">{{ detail.row.status }}</span>
-                {% endif %}
+                {{ status_badge(detail.row.status) }}
             </div>
         </div>
         <a href="{{ detail.notion_url }}" target="_blank" rel="noopener"

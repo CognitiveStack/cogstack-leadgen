@@ -1,0 +1,15 @@
+{% macro status_badge(status) %}
+{%- if not status %}
+<span class="text-gray-400">—</span>
+{%- elif status in ('Pending QA', 'Pending Enrichment', 'Pending') %}
+<span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">{{ status }}</span>
+{%- elif status in ('QA Approved', 'Interested', 'Yes', 'Converted') %}
+<span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">{{ status }}</span>
+{%- elif status in ('Sent to Call Centre', 'Contacted', 'Maybe') %}
+<span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">{{ status }}</span>
+{%- elif status in ('QA Rejected', 'Not Interested', 'No', 'Duplicate', 'No Reply') %}
+<span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">{{ status }}</span>
+{%- else %}
+<span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">{{ status }}</span>
+{%- endif %}
+{% endmacro %}

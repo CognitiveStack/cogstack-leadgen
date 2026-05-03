@@ -1,3 +1,4 @@
+{% from "_macros.html" import status_badge %}
 {% extends "base.html" %}
 
 {% block title %}Prospects — CogStack Leadgen{% endblock %}
@@ -69,7 +70,7 @@
                         </span>
                     </td>
                     <td class="px-4 py-3 text-gray-600">{{ row.phone or "—" }}</td>
-                    <td class="px-4 py-3 text-gray-600">{{ row.status or "—" }}</td>
+                    <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
                     <td class="px-4 py-3 text-gray-400">{{ row.date_str or "—" }}</td>
                 </tr>
                 {% endfor %}
