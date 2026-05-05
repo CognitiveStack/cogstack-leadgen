@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Batch Not Found — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <h1 class="text-xl font-semibold">Batch Not Found</h1>
+    <p class="text-sm text-gray-500 font-mono break-all">{{ batch_id }}</p>
+    <p class="text-sm text-gray-500">This batch ID does not exist in <code>batches.json</code>.</p>
+    <a href="/outreach/batches" class="inline-block text-sm text-indigo-600 hover:underline">
+        ← All Batches
+    </a>
+</div>
+{% endblock %}

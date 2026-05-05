@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Batch {{ batch.get('batch_id', '')[:8] }}… — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold">Outreach Batch</h1>
+            <p class="mt-1 font-mono text-xs text-gray-400 break-all">{{ batch.get('batch_id', '') }}</p>
+        </div>
+        <a href="/outreach/batches" class="text-sm text-indigo-600 hover:underline">
+            ← All Batches
+        </a>
+    </div>
+
+    <!-- Flags -->
+    {% if batch.get('dry_run') %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <strong>DRY-RUN mode.</strong> No real messages were sent.
+    </div>
+    {% endif %}
+
+    <!-- Live status partial — hx-trigger present only when running -->
+    {% include "outreach/_batch_status_partial.html" %}
+
+    <!-- Result CTA — disabled until Gate 5.5 ships result-summary view -->
+    <div class="pt-2">
+        <a href="/outreach/batch/{{ batch.get('batch_id', '') }}/results"
+           class="inline-block rounded border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-400 cursor-not-allowed pointer-events-none"
+           tabindex="-1"
+           title="Result summary coming in Phase 1.5">
+            View results → <span class="text-xs">(Phase 1.5)</span>
+        </a>
+    </div>
+
+</div>
+{% endblock %}

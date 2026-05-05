@@ -20,7 +20,7 @@ from cogstack_ui.notion.writes import (
     update_status,
 )
 from cogstack_ui.utils.phone import normalise_phone
-from cogstack_ui.whatsapp.batches import append_batch, get_template_hash, load_batches
+from cogstack_ui.whatsapp.batches import append_batch, get_batch, get_template_hash, load_batches
 from cogstack_ui.whatsapp.worker import run_batch
 from cogstack_ui.whatsapp.eligibility import is_eligible
 from cogstack_ui.whatsapp.state import (
@@ -412,15 +412,47 @@ async def outreach_batches_index(request: Request):
     )
 
 
+# ── Bulk outreach batch status partial (HTMX polling target) ─────────────────
+
+
+@router.get("/outreach/batch/{batch_id}/status", response_class=HTMLResponse)
+async def outreach_batch_status_partial(request: Request, batch_id: str):
+    """Render just the status partial for HTMX polling.
+
+    Returns a small HTML fragment (the full #batch-status div) with the
+    hx-trigger attr present only when status is 'running'. When terminal,
+    the attr is absent so HTMX stops polling automatically (outerHTML swap).
+    """
+    batch = await asyncio.to_thread(get_batch, batch_id)
+    if batch is None:
+        return HTMLResponse(
+            "<p class='text-sm text-red-600'>Batch not found.</p>",
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        request,
+        "outreach/_batch_status_partial.html",
+        {"batch": batch},
+    )
+
+
 # ── Bulk outreach batch view ──────────────────────────────────────────────────
 
 
 @router.get("/outreach/batch/{batch_id}")
 async def outreach_batch_view(request: Request, batch_id: str):
+    batch = await asyncio.to_thread(get_batch, batch_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            request,
+            "outreach/batch_not_found.html",
+            {"batch_id": batch_id},
+            status_code=404,
+        )
     return templates.TemplateResponse(
         request,
-        "outreach/batch_queued.html",
-        {"batch_id": batch_id, "dry_run": config.DRY_RUN},
+        "outreach/batch_status.html",
+        {"batch": batch},
     )
 
 
