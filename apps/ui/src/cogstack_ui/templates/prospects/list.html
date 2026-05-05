@@ -41,6 +41,13 @@
     <!-- Results table + bulk send form -->
     {% if prospect_rows %}
 
+    {% if aborted %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <strong>{{ aborted|length }} aborted batch{{ 's' if aborted|length > 1 else '' }} need review.</strong>
+        <a href="/outreach/batches" class="underline">View →</a>
+    </div>
+    {% endif %}
+
     {% if state_load_failed %}
     <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         <strong>Outreach state unavailable.</strong>

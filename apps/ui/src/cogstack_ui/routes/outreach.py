@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -20,7 +20,8 @@ from cogstack_ui.notion.writes import (
     update_status,
 )
 from cogstack_ui.utils.phone import normalise_phone
-from cogstack_ui.whatsapp.batches import append_batch, get_template_hash
+from cogstack_ui.whatsapp.batches import append_batch, get_template_hash, load_batches
+from cogstack_ui.whatsapp.worker import run_batch
 from cogstack_ui.whatsapp.eligibility import is_eligible
 from cogstack_ui.whatsapp.state import (
     append_and_save,
@@ -289,6 +290,7 @@ async def outreach_preview(
 async def outreach_batch_start(
     request: Request,
     batch_id: str,
+    background_tasks: BackgroundTasks,
     selected_ids: list[str] = Form(default=[]),
     confirm_text: str = Form(default=""),
 ):
@@ -329,7 +331,9 @@ async def outreach_batch_start(
 
         details = await asyncio.gather(*[_fetch(pid) for pid in selected_ids])
 
-    valid_phones: list[str] = []
+    # Build queued list as dicts so the worker has name + business for
+    # build_message() without needing a second Notion fetch at send time.
+    valid_items: list[dict] = []
     for page_id, detail in zip(selected_ids, details):
         if detail is None:
             continue
@@ -337,17 +341,27 @@ async def outreach_batch_start(
         if not eligible:
             continue
         canonical = normalise_phone(detail.row.phone) if detail.row.phone else None
-        if canonical:
-            valid_phones.append(canonical)
+        if not canonical:
+            continue
+        expressed_interest = (
+            detail.properties.get("Business")
+            or detail.properties.get("Company Name")
+            or ""
+        )
+        valid_items.append({
+            "phone": canonical,
+            "name": detail.row.name,
+            "business": expressed_interest,
+        })
 
-    if not valid_phones:
+    if not valid_items:
         return HTMLResponse(
             "<p class='text-amber-600 text-sm'>All selected prospects are ineligible. "
             "Nothing to queue.</p>",
         )
 
     if not config.DRY_RUN:
-        expected = f"SEND-{len(valid_phones)}"
+        expected = f"SEND-{len(valid_items)}"
         if confirm_text != expected:
             return HTMLResponse(
                 f"<p class='text-red-600 text-sm'>Confirmation text incorrect. "
@@ -358,7 +372,7 @@ async def outreach_batch_start(
     append_batch({
         "batch_id": batch_id,
         "status": "pending",
-        "queued": valid_phones,
+        "queued": valid_items,
         "completed": [],
         "skipped": [],
         "failed": [],
@@ -370,10 +384,32 @@ async def outreach_batch_start(
 
     logger.info(
         "batch_start batch=%s queued=%d dry_run=%s",
-        batch_id, len(valid_phones), config.DRY_RUN,
+        batch_id, len(valid_items), config.DRY_RUN,
     )
 
+    background_tasks.add_task(run_batch, batch_id)
     return RedirectResponse(f"/outreach/batch/{batch_id}", status_code=303)
+
+
+# ── Bulk outreach batches index ───────────────────────────────────────────────
+
+
+@router.get("/outreach/batches")
+async def outreach_batches_index(request: Request):
+    batches = load_batches()
+    # Sort: aborted first, then running, then pending, then done.
+    # Within each group, most recent first (descending started_at; None sorts last).
+    _STATUS_ORDER = {"aborted": 0, "running": 1, "pending": 2, "done": 3}
+    # Two-pass stable sort: first by started_at descending (most recent first),
+    # then by status order ascending. Python's stable sort preserves the
+    # within-group order from the first pass.
+    batches.sort(key=lambda b: b.get("started_at") or "", reverse=True)
+    batches.sort(key=lambda b: _STATUS_ORDER.get(b.get("status", ""), 99))
+    return templates.TemplateResponse(
+        request,
+        "outreach/batches_index.html",
+        {"batches": batches},
+    )
 
 
 # ── Bulk outreach batch view ──────────────────────────────────────────────────

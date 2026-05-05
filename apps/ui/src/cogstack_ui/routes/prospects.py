@@ -14,6 +14,7 @@ from cogstack_ui.notion.queries import (
     list_prospects,
 )
 from cogstack_ui.utils.phone import normalise_phone
+from cogstack_ui.whatsapp.batches import aborted_batches
 from cogstack_ui.whatsapp.eligibility import is_eligible
 from cogstack_ui.whatsapp.state import get_sent_record, load_state, load_state_strict
 
@@ -74,6 +75,12 @@ async def prospects_list(request: Request, q: str | None = None):
     else:
         prospect_rows = [(row, *is_eligible(row, sent_phones)) for row in rows]
 
+    try:
+        aborted = aborted_batches()
+    except Exception:
+        logger.exception("aborted_batches failed")
+        aborted = []
+
     return templates.TemplateResponse(
         request,
         "prospects/list.html",
@@ -83,6 +90,7 @@ async def prospects_list(request: Request, q: str | None = None):
             "q": q,
             "phone_error": phone_error,
             "canonical_phone": canonical_phone,
+            "aborted": aborted,
         },
     )
 

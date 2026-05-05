@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Outreach Batches — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Outreach Batches</h1>
+        <a href="/prospects" class="text-sm text-indigo-600 hover:underline">← Back to Prospects</a>
+    </div>
+
+    {% if not batches %}
+    <p class="text-sm text-gray-400">No batches yet.</p>
+    {% else %}
+
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Batch ID</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Status</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Started</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Completed</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Q / C / S / F</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Flags</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Abort reason</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for b in batches %}
+                {% set status = b.get("status", "") %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3 font-mono">
+                        <a href="/outreach/batch/{{ b.get('batch_id', '') }}"
+                           class="text-indigo-600 hover:underline"
+                           title="{{ b.get('batch_id', '') }}">
+                            {{ b.get('batch_id', '')[:8] }}&hellip;
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if status == "done" %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">done</span>
+                        {% elif status == "running" %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700">running</span>
+                        {% elif status == "pending" %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">pending</span>
+                        {% elif status == "aborted" %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">aborted</span>
+                        {% else %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500">{{ status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-500 font-mono text-xs">
+                        {{ b.get("started_at", "") | truncate(19, True, "") if b.get("started_at") else "—" }}
+                    </td>
+                    <td class="px-4 py-3 text-gray-500 font-mono text-xs">
+                        {{ b.get("completed_at", "") | truncate(19, True, "") if b.get("completed_at") else "—" }}
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">
+                        {{ b.get("queued", [])|length }} /
+                        {{ b.get("completed", [])|length }} /
+                        {{ b.get("skipped", [])|length }} /
+                        {{ b.get("failed", [])|length }}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if b.get("dry_run") %}
+                        <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">DRY</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-amber-700 text-xs max-w-xs truncate"
+                        title="{{ b.get('abort_reason', '') }}">
+                        {% if status == "aborted" %}
+                        {{ b.get("abort_reason", "—") }}
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if status == "aborted" %}
+                        <button disabled
+                                title="Manual batch resume coming in Phase 2"
+                                class="cursor-not-allowed rounded border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-400">
+                            Resume (Phase 2)
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% endif %}
+
+</div>
+{% endblock %}
