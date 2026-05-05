@@ -1,26 +1,32 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from cogstack_ui import config
 from cogstack_ui.baileys.client import BaileysClient
 from cogstack_ui.notion.client import NotionClient
+from cogstack_ui.notion.queries import get_prospect_detail
 from cogstack_ui.notion.writes import (
     create_claire_prospect,
     mark_submitted_to_pipeline,
     update_status,
 )
 from cogstack_ui.utils.phone import normalise_phone
+from cogstack_ui.whatsapp.batches import append_batch, get_template_hash
+from cogstack_ui.whatsapp.eligibility import is_eligible
 from cogstack_ui.whatsapp.state import (
     append_and_save,
     get_sent_record,
     load_state,
+    load_state_strict,
 )
 from cogstack_ui.whatsapp.templates import build_message
 
@@ -181,20 +187,205 @@ async def wa_send(
     )
 
 
-# ── Bulk outreach preview — stub (Gate 5.2 replaces with real preview page) ───
+# ── Bulk outreach preview ─────────────────────────────────────────────────────
+
+_CAP = 40
 
 
 @router.post("/outreach/preview")
 async def outreach_preview(
+    request: Request,
     selected_ids: list[str] = Form(default=[]),
 ):
-    """Gate 5.1 stub — echoes received IDs as JSON.
+    if not selected_ids:
+        return RedirectResponse("/prospects", status_code=303)
 
-    Gate 5.2 will replace this with a real preview page (HTML response)
-    showing message previews for each selected prospect and a Confirm Send
-    button. Server-side cap enforcement (max 40) will also be added in 5.2.
-    """
-    return JSONResponse({"received_ids": selected_ids, "count": len(selected_ids)})
+    if len(selected_ids) > _CAP:
+        return HTMLResponse(
+            f"<p class='text-red-600 text-sm'>Too many prospects selected "
+            f"({len(selected_ids)}). Maximum is {_CAP}.</p>",
+            status_code=400,
+        )
+
+    # Fail-closed: if state is unreadable, block preview rather than risk blast.
+    try:
+        sent_phones: set[str] = {
+            p
+            for e in load_state_strict()
+            if e.get("phone")
+            for p in (normalise_phone(e["phone"]),)
+            if p is not None
+        }
+    except Exception:
+        logger.exception("load_state_strict failed in outreach_preview")
+        return HTMLResponse(
+            "<p class='text-red-600 text-sm'>Outreach state unreadable — "
+            "cannot proceed. Check logs.</p>",
+            status_code=500,
+        )
+
+    # Fetch all prospect details in parallel — single client, no per-fetch overhead.
+    async with NotionClient(config.NOTION_READONLY_TOKEN) as client:
+        async def _fetch(page_id: str):
+            try:
+                return await get_prospect_detail(client, page_id)
+            except Exception:
+                logger.exception("get_prospect_detail failed for %s", page_id)
+                return None
+
+        details = await asyncio.gather(*[_fetch(pid) for pid in selected_ids])
+
+    valid: list[dict] = []
+    skipped: list[dict] = []
+
+    for page_id, detail in zip(selected_ids, details):
+        if detail is None:
+            skipped.append({"page_id": page_id, "name": page_id, "reason": "Not found or Notion error"})
+            continue
+        eligible, reason = is_eligible(detail.row, sent_phones)
+        if not eligible:
+            skipped.append({"page_id": page_id, "name": detail.row.name, "reason": reason})
+            continue
+        expressed_interest = (
+            detail.properties.get("Business")
+            or detail.properties.get("Company Name")
+            or ""
+        )
+        valid.append({
+            "page_id": detail.row.page_id,
+            "name": detail.row.name,
+            "db_name": detail.row.db_name,
+            "phone": detail.row.phone,
+            "expressed_interest": expressed_interest,
+            "message": build_message(name=detail.row.name, expressed_interest=expressed_interest or ""),
+        })
+
+    if not valid:
+        return HTMLResponse(
+            "<p class='text-amber-600 text-sm'>All selected prospects are ineligible. "
+            "Nothing to send.</p>",
+        )
+
+    batch_id = str(uuid.uuid4())
+    first_message = valid[0]["message"]
+
+    return templates.TemplateResponse(
+        request,
+        "outreach/preview.html",
+        {
+            "valid": valid,
+            "skipped": skipped,
+            "batch_id": batch_id,
+            "first_message": first_message,
+            "dry_run": config.DRY_RUN,
+        },
+    )
+
+
+# ── Bulk outreach batch start ─────────────────────────────────────────────────
+
+
+@router.post("/outreach/batch/{batch_id}/start")
+async def outreach_batch_start(
+    request: Request,
+    batch_id: str,
+    selected_ids: list[str] = Form(default=[]),
+    confirm_text: str = Form(default=""),
+):
+    if not selected_ids:
+        return RedirectResponse("/prospects", status_code=303)
+
+    if len(selected_ids) > _CAP:
+        return HTMLResponse(
+            f"<p class='text-red-600 text-sm'>Too many prospects ({len(selected_ids)}). "
+            f"Maximum is {_CAP}.</p>",
+            status_code=400,
+        )
+
+    # Fresh re-validation — defense in depth.
+    try:
+        sent_phones: set[str] = {
+            p
+            for e in load_state_strict()
+            if e.get("phone")
+            for p in (normalise_phone(e["phone"]),)
+            if p is not None
+        }
+    except Exception:
+        logger.exception("load_state_strict failed in outreach_batch_start")
+        return HTMLResponse(
+            "<p class='text-red-600 text-sm'>Outreach state unreadable — "
+            "cannot proceed. Check logs.</p>",
+            status_code=500,
+        )
+
+    async with NotionClient(config.NOTION_READONLY_TOKEN) as client:
+        async def _fetch(page_id: str):
+            try:
+                return await get_prospect_detail(client, page_id)
+            except Exception:
+                logger.exception("get_prospect_detail failed for %s in batch_start", page_id)
+                return None
+
+        details = await asyncio.gather(*[_fetch(pid) for pid in selected_ids])
+
+    valid_phones: list[str] = []
+    for page_id, detail in zip(selected_ids, details):
+        if detail is None:
+            continue
+        eligible, _ = is_eligible(detail.row, sent_phones)
+        if not eligible:
+            continue
+        canonical = normalise_phone(detail.row.phone) if detail.row.phone else None
+        if canonical:
+            valid_phones.append(canonical)
+
+    if not valid_phones:
+        return HTMLResponse(
+            "<p class='text-amber-600 text-sm'>All selected prospects are ineligible. "
+            "Nothing to queue.</p>",
+        )
+
+    if not config.DRY_RUN:
+        expected = f"SEND-{len(valid_phones)}"
+        if confirm_text != expected:
+            return HTMLResponse(
+                f"<p class='text-red-600 text-sm'>Confirmation text incorrect. "
+                f"Expected <code>{expected}</code>.</p>",
+                status_code=400,
+            )
+
+    append_batch({
+        "batch_id": batch_id,
+        "status": "pending",
+        "queued": valid_phones,
+        "completed": [],
+        "skipped": [],
+        "failed": [],
+        "started_at": None,
+        "completed_at": None,
+        "dry_run": config.DRY_RUN,
+        "template_hash": get_template_hash(),
+    })
+
+    logger.info(
+        "batch_start batch=%s queued=%d dry_run=%s",
+        batch_id, len(valid_phones), config.DRY_RUN,
+    )
+
+    return RedirectResponse(f"/outreach/batch/{batch_id}", status_code=303)
+
+
+# ── Bulk outreach batch view ──────────────────────────────────────────────────
+
+
+@router.get("/outreach/batch/{batch_id}")
+async def outreach_batch_view(request: Request, batch_id: str):
+    return templates.TemplateResponse(
+        request,
+        "outreach/batch_queued.html",
+        {"batch_id": batch_id, "dry_run": config.DRY_RUN},
+    )
 
 
 # ── Cartrack — Step A: confirmation panel ─────────────────────────────────────

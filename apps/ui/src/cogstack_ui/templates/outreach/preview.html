@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Outreach Preview — CogStack Leadgen{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <h1 class="text-xl font-semibold">Outreach Preview</h1>
+
+    {% if dry_run %}
+    <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <strong>DRY-RUN mode.</strong> No messages will be sent. Batch will be queued as dry_run=true.
+    </div>
+    {% endif %}
+
+    <!-- Summary -->
+    <p class="text-sm text-gray-600">
+        <span class="font-medium text-gray-900">{{ valid | length }}</span> valid
+        &middot;
+        <span class="font-medium {% if skipped %}text-amber-700{% else %}text-gray-900{% endif %}">{{ skipped | length }}</span> skipped
+    </p>
+
+    <!-- Skipped (collapsible) -->
+    {% if skipped %}
+    <details class="rounded-lg border border-amber-200 bg-amber-50">
+        <summary class="cursor-pointer px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 rounded-lg">
+            {{ skipped | length }} skipped prospect{{ 's' if skipped | length != 1 else '' }} — click to expand
+        </summary>
+        <ul class="divide-y divide-amber-100 px-4 pb-3 pt-1">
+            {% for s in skipped %}
+            <li class="py-1.5 text-sm text-amber-700">
+                <span class="font-medium">{{ s.name }}</span>
+                <span class="text-amber-500"> — {{ s.reason }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    <!-- Valid prospects table -->
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Name</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">DB</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Phone</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Context</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for p in valid %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <a href="/prospects/{{ p.page_id }}"
+                           class="text-indigo-600 hover:underline">{{ p.name }}</a>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium
+                            {%- if p.db_name == 'B2C' %} bg-blue-100 text-blue-700
+                            {%- elif p.db_name == 'B2B' %} bg-green-100 text-green-700
+                            {%- else %} bg-purple-100 text-purple-700
+                            {%- endif %}">
+                            {{ p.db_name }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-600">{{ p.phone or "—" }}</td>
+                    <td class="px-4 py-3 text-gray-500">{{ p.expressed_interest or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Message preview (first prospect) -->
+    <div class="space-y-1">
+        <p class="text-xs font-medium uppercase tracking-wide text-gray-400">
+            Message preview ({{ valid[0].name }})
+        </p>
+        <pre class="whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">{{ first_message }}</pre>
+    </div>
+
+    <!-- Confirmation form -->
+    <form method="post" action="/outreach/batch/{{ batch_id }}/start" class="space-y-4">
+        {% for p in valid %}
+        <input type="hidden" name="selected_ids" value="{{ p.page_id }}">
+        {% endfor %}
+
+        {% if dry_run %}
+        <button type="submit"
+                class="rounded bg-green-600 px-6 py-2 text-sm text-white hover:bg-green-700">
+            Confirm Send — {{ valid | length }} prospects (DRY-RUN)
+        </button>
+        {% else %}
+        <div class="space-y-2">
+            <label class="block text-sm text-gray-700">
+                Type <code class="rounded bg-gray-100 px-1 font-mono text-gray-900">SEND-{{ valid | length }}</code> to confirm:
+            </label>
+            <input id="confirm-input" type="text" name="confirm_text" autocomplete="off"
+                   class="w-48 rounded border border-gray-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500">
+            <div>
+                <button id="confirm-btn" type="submit" disabled
+                        class="rounded bg-red-600 px-6 py-2 text-sm text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40">
+                    Send to {{ valid | length }} prospects
+                </button>
+            </div>
+        </div>
+        <script>
+        (function () {
+            var expected = "SEND-{{ valid | length }}";
+            var input = document.getElementById("confirm-input");
+            var btn   = document.getElementById("confirm-btn");
+            input.addEventListener("input", function () {
+                btn.disabled = input.value !== expected;
+            });
+        })();
+        </script>
+        {% endif %}
+
+        <a href="/prospects" class="inline-block text-sm text-gray-500 hover:text-gray-700">
+            &larr; Cancel
+        </a>
+    </form>
+
+</div>
+{% endblock %}
