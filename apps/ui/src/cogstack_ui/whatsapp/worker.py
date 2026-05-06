@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 # concurrently. LOCK_NB → fail fast rather than queue.
 _BATCH_LOCK_FILE = Path(config.OUTREACH_STATE_PATH).parent / "batch.lock"
 
+# Kill-switch sentinel file — if this path exists at the top of the per-phone
+# loop, the batch is aborted immediately and the file is deleted.
+_KILLSWITCH_FILE = Path(config.OUTREACH_KILLSWITCH_PATH)
+
 # Substrings (case-insensitive) in SendResult.error that trigger
 # HARD ABORT of the whole batch — Baileys session or auth failures.
 # Permissive on purpose: false-positive aborts one batch and asks
@@ -257,6 +261,45 @@ async def _run_batch_locked(batch_id: str) -> None:
             phone: str = item["phone"]
             name: str = item.get("name", "")
             business: str = item.get("business", "")
+
+            # 5-ks. Kill-switch — check BEFORE dedup so a stop request takes
+            # effect immediately rather than after the current phone completes.
+            # Fail OPEN on FS error so transient OS issues don't kill the batch.
+            try:
+                ks_exists = await asyncio.to_thread(_KILLSWITCH_FILE.exists)
+            except Exception:
+                logger.exception(
+                    "batch=%s killswitch exists() failed — continuing batch",
+                    batch_id,
+                )
+                ks_exists = False
+
+            if ks_exists:
+                try:
+                    await asyncio.to_thread(_KILLSWITCH_FILE.unlink, True)
+                except Exception:
+                    logger.exception(
+                        "batch=%s killswitch unlink failed — proceeding with abort",
+                        batch_id,
+                    )
+                current = await asyncio.to_thread(get_batch, batch_id) or {}
+                completed_n = len(current.get("completed", []))
+                skipped_n = len(current.get("skipped", []))
+                failed_n = len(current.get("failed", []))
+                total_n = len(current.get("queued", []))
+                remaining_n = total_n - (completed_n + skipped_n + failed_n)
+                logger.warning(
+                    "batch=%s phase=killswitch_aborted "
+                    "completed=%d skipped=%d failed=%d remaining=%d",
+                    batch_id, completed_n, skipped_n, failed_n, remaining_n,
+                )
+                await asyncio.to_thread(
+                    update_batch, batch_id,
+                    status="aborted",
+                    abort_reason="kill-switch triggered",
+                    completed_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
 
             # 5a. Re-load state (NOT strict — missing file is normal at batch start).
             state = load_state()

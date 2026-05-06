@@ -436,6 +436,114 @@ async def outreach_batch_status_partial(request: Request, batch_id: str):
     )
 
 
+# ── Bulk outreach batch results ───────────────────────────────────────────────
+
+
+@router.get("/outreach/batch/{batch_id}/results")
+async def outreach_batch_results(request: Request, batch_id: str):
+    """Per-prospect outcome detail for a completed or aborted batch."""
+    batch = await asyncio.to_thread(get_batch, batch_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            request, "outreach/batch_not_found.html",
+            {"batch_id": batch_id}, status_code=404,
+        )
+    # Non-terminal batches redirect to the live status page.
+    if batch.get("status") not in ("done", "aborted"):
+        return RedirectResponse(
+            f"/outreach/batch/{batch_id}", status_code=303,
+        )
+
+    state = await asyncio.to_thread(load_state)
+    state_by_phone = {e["phone"]: e for e in state if e.get("phone")}
+
+    completed_set = set(batch.get("completed", []))
+    skipped_set = set(batch.get("skipped", []))
+    failed_set = set(batch.get("failed", []))
+
+    rows = []
+    for item in batch.get("queued", []):
+        phone = item["phone"]
+        queued_name = item.get("name", "")
+        queued_business = item.get("business", "")
+        entry = state_by_phone.get(phone)
+
+        if phone in completed_set:
+            outcome, reason = "sent", None
+        elif phone in skipped_set:
+            outcome, reason = "skipped", "already sent (mid-batch dedup)"
+        elif phone in failed_set:
+            outcome, reason = "failed", "send failed (see worker logs for detail)"
+        else:
+            outcome, reason = "not_attempted", "batch aborted before this phone"
+
+        rows.append({
+            "phone": phone,
+            "outcome": outcome,
+            "reason": reason,
+            "display_name": (entry or {}).get("display_name") or queued_name or "—",
+            "interest": (entry or {}).get("interest") or queued_business or "—",
+            "sent_at": (entry or {}).get("sent_at"),
+            "notion_page_id": (entry or {}).get("notion_page_id"),
+            "dry_run_entry": (entry or {}).get("dry_run"),
+        })
+
+    # Human-readable duration.
+    duration_s = None
+    duration_str = "—"
+    if batch.get("started_at") and batch.get("completed_at"):
+        try:
+            from datetime import datetime as _dt
+            start = _dt.fromisoformat(batch["started_at"])
+            end = _dt.fromisoformat(batch["completed_at"])
+            duration_s = (end - start).total_seconds()
+            mins, secs = int(duration_s) // 60, int(duration_s) % 60
+            duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+        except (ValueError, KeyError):
+            pass
+
+    return templates.TemplateResponse(
+        request,
+        "outreach/batch_results.html",
+        {
+            "batch": batch,
+            "rows": rows,
+            "duration_str": duration_str,
+        },
+    )
+
+
+# ── Bulk outreach batch kill-switch ──────────────────────────────────────────
+
+
+@router.post("/outreach/batch/{batch_id}/killswitch")
+async def outreach_batch_killswitch(request: Request, batch_id: str):
+    """Create the kill-switch sentinel file.
+
+    The running worker checks for this file at the top of each per-phone
+    iteration. When found, it aborts the batch, deletes the sentinel, and
+    marks the batch as aborted. This endpoint is idempotent: touching an
+    already-existing sentinel is harmless.
+    """
+    batch = await asyncio.to_thread(get_batch, batch_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            request, "outreach/batch_not_found.html",
+            {"batch_id": batch_id}, status_code=404,
+        )
+    if batch.get("status") != "running":
+        return RedirectResponse(f"/outreach/batch/{batch_id}", status_code=303)
+
+    def _create_sentinel() -> None:
+        ks = Path(config.OUTREACH_KILLSWITCH_PATH)
+        ks.parent.mkdir(parents=True, exist_ok=True)
+        ks.touch()
+
+    await asyncio.to_thread(_create_sentinel)
+    logger.warning("batch=%s killswitch sentinel created by user", batch_id)
+    return RedirectResponse(f"/outreach/batch/{batch_id}", status_code=303)
+
+
 # ── Bulk outreach batch view ──────────────────────────────────────────────────
 
 

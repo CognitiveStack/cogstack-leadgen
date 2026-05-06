@@ -26,13 +26,26 @@
     <!-- Live status partial — hx-trigger present only when running -->
     {% include "outreach/_batch_status_partial.html" %}
 
-    <!-- Result CTA — disabled until Gate 5.5 ships result-summary view -->
+    <!-- Kill-switch — only visible while batch is running -->
+    {% if batch.get('status') == 'running' %}
+    <form method="post" action="/outreach/batch/{{ batch.get('batch_id', '') }}/killswitch"
+          onsubmit="return confirm('Stop this batch after the current send completes? The batch will be marked aborted.')">
+        <button type="submit"
+                class="rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 hover:bg-red-100">
+            Stop batch
+        </button>
+    </form>
+    {% endif %}
+
+    <!-- Result CTA — enabled once batch reaches a terminal state -->
+    {% set is_terminal = batch.get('status') in ('done', 'aborted') %}
     <div class="pt-2">
         <a href="/outreach/batch/{{ batch.get('batch_id', '') }}/results"
-           class="inline-block rounded border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-400 cursor-not-allowed pointer-events-none"
-           tabindex="-1"
-           title="Result summary coming in Phase 1.5">
-            View results → <span class="text-xs">(Phase 1.5)</span>
+           class="inline-block rounded border px-4 py-2 text-sm
+                  {% if is_terminal %}border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100
+                  {% else %}border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed pointer-events-none opacity-40{% endif %}"
+           {% if not is_terminal %}aria-disabled="true" tabindex="-1" title="Available when batch completes"{% endif %}>
+            View results →
         </a>
     </div>
 

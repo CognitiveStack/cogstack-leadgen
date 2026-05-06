@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Batch Results — {{ batch.get('batch_id', '')[:8] }}… — CogStack Leadgen{% endblock %}
+
+{% block content %}
+{% set status = batch.get("status", "") %}
+{% set batch_id = batch.get("batch_id", "") %}
+<div class="space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold">Batch Results</h1>
+            <p class="mt-1 font-mono text-xs text-gray-400 break-all">{{ batch_id }}</p>
+        </div>
+        <div class="flex gap-4 text-sm">
+            <a href="/outreach/batch/{{ batch_id }}" class="text-indigo-600 hover:underline">← Status</a>
+            <a href="/outreach/batches" class="text-indigo-600 hover:underline">All Batches</a>
+        </div>
+    </div>
+
+    <!-- Summary card -->
+    <div class="rounded-lg border border-gray-200 bg-white px-5 py-4 space-y-3">
+        <div class="flex flex-wrap gap-4 items-center">
+            <!-- Status badge -->
+            {% if status == 'done' %}
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">done</span>
+            {% elif status == 'aborted' %}
+            <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">aborted</span>
+            {% endif %}
+
+            {% if batch.get('dry_run') %}
+            <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 border border-gray-200">DRY</span>
+            {% endif %}
+
+            <!-- Counts -->
+            <span class="text-sm text-gray-600">
+                {{ batch.get("queued", [])|length }} queued &middot;
+                {{ batch.get("completed", [])|length }} sent &middot;
+                {{ batch.get("skipped", [])|length }} skipped &middot;
+                {{ batch.get("failed", [])|length }} failed
+            </span>
+
+            <!-- Duration -->
+            <span class="text-sm text-gray-400">Duration: {{ duration_str }}</span>
+        </div>
+
+        <!-- Abort reason (aborted only) -->
+        {% if status == 'aborted' and batch.get('abort_reason') %}
+        <div class="rounded-lg border-2 border-red-300 bg-red-50 px-4 py-3">
+            <div class="text-xs font-medium uppercase tracking-wide text-red-600">Batch aborted</div>
+            <div class="mt-1 text-sm text-red-900">{{ batch.get('abort_reason') }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Per-prospect table -->
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Outcome</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Name</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Phone</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Interest</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Sent at</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Notion</th>
+                    <th class="px-4 py-3 text-left font-medium text-gray-500">Reason</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for row in rows %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        {% if row.outcome == 'sent' %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700">sent</span>
+                        {% elif row.outcome == 'skipped' %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">skipped</span>
+                        {% elif row.outcome == 'failed' %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700">failed</span>
+                        {% elif row.outcome == 'not_attempted' %}
+                        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">not attempted</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-800">{{ row.display_name }}</td>
+                    <td class="px-4 py-3 font-mono text-gray-600">{{ row.phone }}</td>
+                    <td class="px-4 py-3 text-gray-600">{{ row.interest }}</td>
+                    <td class="px-4 py-3 text-gray-500 font-mono text-xs">
+                        {% if row.sent_at %}{{ row.sent_at[:19] }}{% else %}—{% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if row.notion_page_id %}
+                        <a href="https://notion.so/{{ row.notion_page_id | replace('-', '') }}"
+                           target="_blank" rel="noopener"
+                           class="text-indigo-600 hover:underline text-xs font-mono">
+                            {{ row.notion_page_id[:8] }}…
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-400 text-xs">{{ row.reason or "" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Footer mode note -->
+    {% if batch.get('dry_run') %}
+    <div class="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-500">
+        <strong>DRY_RUN</strong> — no real WhatsApp messages were sent.
+    </div>
+    {% else %}
+    <div class="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+        <strong>Live mode</strong> — these messages were sent via WhatsApp.
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

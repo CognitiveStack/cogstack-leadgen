@@ -26,6 +26,7 @@ NOTION_READONLY_TOKEN: str = _env("NOTION_READONLY_TOKEN")
 NOTION_WRITE_TOKEN: str = _env("NOTION_WRITE_TOKEN")
 BAILEYS_URL: str = _env("BAILEYS_URL") or "http://baileys:3456"
 OUTREACH_STATE_PATH: str = _env("OUTREACH_STATE_PATH") or "/app/logs/outreach-state.json"
+OUTREACH_KILLSWITCH_PATH: str = _env("OUTREACH_KILLSWITCH_PATH") or "/app/logs/batch.killswitch"
 
 # Dry-run mode — default True (safe). Set COGSTACK_DRY_RUN=false in .env to enable real sends.
 DRY_RUN: bool = _env("COGSTACK_DRY_RUN").lower() not in ("false", "0", "no")
