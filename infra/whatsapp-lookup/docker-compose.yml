@@ -1,0 +1,39 @@
+
+services:
+
+  baileys:
+
+    build:
+
+      context: /opt/projects/whatsapp-lookup
+
+      dockerfile: Dockerfile
+
+    container_name: baileys
+
+    restart: unless-stopped
+
+    user: "1001:1001"
+
+    volumes:
+
+      - /opt/projects/whatsapp-lookup/auth_info:/app/auth_info
+
+      - /opt/projects/whatsapp-lookup/contact_names.json:/app/contact_names.json
+
+    ports:
+
+      - "127.0.0.1:3456:3456"
+
+    networks:
+
+      - caddy-shared
+
+
+
+networks:
+
+  caddy-shared:
+
+    external: true
+
